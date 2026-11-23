@@ -1,0 +1,422 @@
+*** MaQ#: herramienta interactiva para Q# en Maude.
+***
+***   maude -allow-files qsharp-io.maude
+***
+*** Comandos:
+***   open fichero.qs              carga y traduce un programa Q#
+***   show                         muestra el programa traducido a QSHARP-SYNTAX
+***   run Op                       ejecuta Op() con probabilidades (como mucho 10 soluciones)
+***   runnp Op                     ejecuta Op() sin probabilidades (grafo finito con bucles)
+***   run Op (args) in estado      parte de argumentos y estado cuántico dados, p. ej.
+***                                run Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>)
+***   check Op ensures cond        comprueba cond en TODOS los estados finales (modo sin
+***   check Op (args) in estado ensures cond     probabilidades); en cond se pueden usar
+***                                QS:Qubit (estado final) y RES:Value (resultado)
+***   dist Op                      distribución EXACTA de resultados: suma las
+***   dist Op (args) in estado     probabilidades de todos los caminos (hasta 200 pasos)
+***   mc Op satisfies F            model checking LTL de F (modo sin probabilidades);
+***   mc Op (args) in estado satisfies F    proposiciones: ended, returns(V),
+***                                qubit(N, V), qubitPh(N, V), entangled(N), liveLE(K)
+***   module M                     módulo para args/estado/cond (por defecto QSHARP-PROPS);
+***                                M debe cargarse antes y extender QSHARP-PROPS
+***   q | quit
+***
+*** Estructura tomada de MUnit (https://github.com/ariesco/MUnit).
+
+load file.maude
+sload qsharp-props.maude
+sload qsharp-mc.maude
+load frontend/qsharp-lexer.maude
+load frontend/qsharp-surface.maude
+load frontend/qsharp-translate.maude
+
+fmod MAYBE{X :: TRIV} is
+  sort Maybe{X} .
+  subsort X$Elt < Maybe{X} .
+  op maybe : -> Maybe{X} [ctor] .
+endfm
+
+view Term from TRIV to META-TERM is
+  sort Elt to Term .
+endv
+
+fmod QSHARP-PROCESSING is
+  pr MAYBE{Term} .
+  pr QSHARP-TRANSLATE .
+  pr QSHARP-META-GRAMMARS .
+  pr QSHARP-LEXER .
+  pr LEXICAL .
+
+  vars T T' P C St Ar V Pr Qs A1 Q1 C1 : Term .
+  var MP : Maybe{Term} . var Ty' : Type . var MC : Module .
+  var TL : TermList . var NeTL : NeTermList .
+  var M : Module . vars Q F : Qid . vars N I MAX : Nat .
+  var S : Substitution . var QIL : QidList . var Ty : Type .
+  var R : ResultTriple . var V' : Variable .
+
+  op popts : -> PrintOptionSet .
+  eq popts = mixfix number rat .
+
+  op pp : Module Term -> String .
+  eq pp(M, T) = printTokens(metaPrettyPrint(M, T, popts)) .
+
+  op val : Substitution Variable -> Term .
+  eq val(V' <- T ; S, V') = T .
+
+  *** carga: devuelve el programa traducido y reducido, o un mensaje de error
+  sort LoadResult .
+  op loaded : Term -> LoadResult [ctor] .
+  op loadError : String -> LoadResult [ctor] .
+
+  op load : Module String -> LoadResult .
+  ceq load(M, St:String) = loadTr(M, T)
+   if {T, Ty} := metaParse(QSHARP-GRAMMAR, tokenize(lex(St:String)), '@Decls@) .
+  ceq load(M, St:String) =
+      loadError("error de sintaxis en el token " + string(N, 10) + ": "
+                + printTokens(nthTok(tokenize(lex(St:String)), N)))
+   if noParse(N) := metaParse(QSHARP-GRAMMAR, tokenize(lex(St:String)), '@Decls@) .
+  eq load(M, St:String) = loadError("entrada ambigua") [owise] .
+
+  op loadTr : Module Term -> LoadResult .
+  ceq loadTr(M, T) = loaded(T')
+   if P := trProgram(T) /\ {T', Ty} := metaReduce(M, P) /\ sortLeq(M, Ty, 'Decls) .
+  eq loadTr(M, T) =
+     loadError("construcción no soportada en este subconjunto, p. ej. una llamada "
+               + "en la condición de un while") [owise] .
+
+  op nthTok : QidList Nat -> QidList .
+  eq nthTok(Q QIL, 0) = Q .
+  eq nthTok(Q QIL, s N) = nthTok(QIL, N) .
+  eq nthTok(nil, N) = nil .
+
+  *** nombres de las operaciones de un programa
+  op opNames : Term -> String .
+  eq opNames('__[T, NeTL]) = opNames(T) + " " + opNames(tail('__, T, NeTL)) .
+  eq opNames('operation_`(_`):_`{_`}[T, TL]) = printTokens(downTerm(T, 'err)) .
+  eq opNames(T) = "" [owise] .
+
+  *** bubbles de los comandos: lista de qids -> término en el módulo M
+  op bubble : Module Term Type ~> Term .
+  ceq bubble(M, 'bubble[T], Ty) = T'
+   if QIL := downTerm(T, (nil).QidList) /\ {T', Ty'} := metaParse(M, QIL, Ty) .
+
+  *** términos iniciales
+  op initRun : Term Qid -> Term .
+  eq initRun(P, F) = 'run[P, qcon(F)] .
+  op initRunNP : Term Qid -> Term .
+  eq initRunNP(P, F) = 'runNP[P, qcon(F)] .
+  op initWith : Qid Term Qid Term Term -> Term .
+  eq initWith(Q, P, F, Ar, Qs) = Q[P, qcon(F), Ar, Qs, 'nextFree[Qs]] .
+
+  *** patrón de estado final
+  op finalPat : -> Term .
+  eq finalPat = '`{_`}['__['qstate:_['QS:Qubit], 'result:_['RES:Value],
+                           'prob:_['PR:Complex], 'isEnd:_['true.Bool], 'R:Comps]] .
+
+  *** enumerar soluciones finales
+  op solutions : Module Term Bool Nat Nat -> String .
+  eq solutions(M, T, B:Bool, I, MAX) =
+     if I == MAX then "  (se muestran solo las " + string(MAX, 10) + " primeras)\n"
+     else $solutions(M, T, B:Bool, I, MAX,
+                     metaSearch(M, T, finalPat, nil, '!, unbounded, I)) fi .
+  op $solutions : Module Term Bool Nat Nat ResultTriple? -> String .
+  eq $solutions(M, T, B:Bool, 0, MAX, failure) = "  no hay estados finales\n" .
+  eq $solutions(M, T, B:Bool, s I, MAX, failure) = "" .
+  eq $solutions(M, T, B:Bool, I, MAX, {T', Ty, S}) =
+     "  resultado: " + pp(M, val(S, 'RES:Value))
+     + (if B:Bool then "   prob: " + pp(M, val(S, 'PR:Complex)) else "" fi)
+     + "   qubits: " + pp(M, val(S, 'QS:Qubit)) + "\n"
+     + solutions(M, T, B:Bool, s I, MAX) .
+
+  *** ---------- ejecución de comandos ----------
+  op isExec : Term -> Bool .
+  eq isExec('show.@Command@) = true .
+  eq isExec('run_[T]) = true .
+  eq isExec('runnp_[T]) = true .
+  eq isExec('run_`(_`)in_[T, Ar, Qs]) = true .
+  eq isExec('runnp_`(_`)in_[T, Ar, Qs]) = true .
+  eq isExec('check_ensures_[T, C]) = true .
+  eq isExec('dist_[T]) = true .
+  eq isExec('mc_satisfies_[T, C]) = true .
+  eq isExec('mc_`(_`)in_satisfies_[T, Ar, Qs, C]) = true .
+  eq isExec('dist_`(_`)in_[T, Ar, Qs]) = true .
+  eq isExec('check_`(_`)in_ensures_[T, Ar, Qs, C]) = true .
+  eq isExec(T) = false [owise] .
+
+  op exec : Term Maybe{Term} Module -> String .
+  eq exec(T, maybe, M) = err("no hay ningún programa cargado (use open)") .
+  eq exec('show.@Command@, P, M) = ok(pp(M, P) + "\n") .
+  eq exec('run_['token[T]], P, M) = ok(solutions(M, initRun(P, downTerm(T, 'err)), true, 0, 10)) .
+  eq exec('runnp_['token[T]], P, M) = ok(solutions(M, initRunNP(P, downTerm(T, 'err)), false, 0, 10)) .
+  ceq exec('run_`(_`)in_['token[T], Ar, Qs], P, M) =
+      ok(solutions(M, initWith('runWith, P, downTerm(T, 'err), A1, Q1), true, 0, 10))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) .
+  ceq exec('runnp_`(_`)in_['token[T], Ar, Qs], P, M) =
+      ok(solutions(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), false, 0, 10))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) .
+  ceq exec('check_ensures_['token[T], C], P, M) = ok(check(M, initRunNP(P, downTerm(T, 'err)), C1))
+   if C1 := bubble(M, C, 'Bool) .
+  ceq exec('check_`(_`)in_ensures_['token[T], Ar, Qs, C], P, M) =
+      ok(check(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), C1))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) /\ C1 := bubble(M, C, 'Bool) .
+  ceq exec('mc_satisfies_['token[T], C], P, M) = ok(ltl(MC, initRunNP(P, downTerm(T, 'err)), C1))
+   if MC := mcModule(M) /\ C1 := bubble(MC, C, 'Formula) .
+  ceq exec('mc_`(_`)in_satisfies_['token[T], Ar, Qs, C], P, M) =
+      ok(ltl(MC, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), C1))
+   if MC := mcModule(M) /\ A1 := bubble(MC, Ar, 'ExpList) /\ Q1 := bubble(MC, Qs, 'Qubit)
+   /\ C1 := bubble(MC, C, 'Formula) .
+  eq exec('dist_['token[T]], P, M) = ok(dist(M, initRun(P, downTerm(T, 'err)), 200)) .
+  ceq exec('dist_`(_`)in_['token[T], Ar, Qs], P, M) =
+      ok(dist(M, initWith('runWith, P, downTerm(T, 'err), A1, Q1), 200))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) .
+  eq exec(T, MP, M) = err("no se pudieron interpretar los argumentos, el estado o la condición") [owise] .
+
+  op err : String -> String .
+  eq err(St:String) = "\n" + printTokens('\! '\r) + "Error: " + printTokens('\o) + St:String + "\n\n" .
+  op ok : String -> String .
+  eq ok(St:String) = "\n" + St:String + "\n" .
+
+  *** ---------- distribución exacta de resultados ----------
+  *** Se recorre el ÁRBOL de ejecución, no el grafo: con metaApply regla a
+  *** regla, dos ramas que llegan a la misma configuración no se fusionan.
+  *** Hay que usar el modo con probabilidades, y cada hoja suma su prob: al
+  *** resultado que devuelve. Se corta a MAX pasos de reescritura y se informa
+  *** de la masa sin explorar (bucles RUS) y de la masa en estados bloqueados.
+  var RS : RuleSet . var AtS : AttrSet . var Cd : Condition . var L : Qid .
+  var TL' : TermList . var D : Dist . vars Rs Stk : Term .
+
+  op ruleLabels : RuleSet -> QidList .
+  eq ruleLabels(none) = nil .
+  eq ruleLabels((rl T => T' [label(L) AtS] .) RS) = L ruleLabels(RS) .
+  eq ruleLabels((crl T => T' if Cd [label(L) AtS] .) RS) = L ruleLabels(RS) .
+
+  op succs : Module QidList Term -> TermList .
+  eq succs(M, nil, T) = empty .
+  eq succs(M, L QIL, T) = succsL(M, L, T, 0), succs(M, QIL, T) .
+  op succsL : Module Qid Term Nat -> TermList .
+  eq succsL(M, L, T, I) = $succsL(M, L, T, I, metaApply(M, T, L, none, I)) .
+  op $succsL : Module Qid Term Nat ResultTriple? -> TermList .
+  eq $succsL(M, L, T, I, failure) = empty .
+  eq $succsL(M, L, T, I, {T', Ty, S}) = T', succsL(M, L, T, s I) .
+
+  *** componente de una configuración {(c1) (c2) ...}
+  op comp : Qid Term ~> Term .
+  eq comp(Q, '`{_`}['__[TL]]) = $comp(Q, TL) .
+  op $comp : Qid TermList ~> Term .
+  eq $comp(Q, (Q[T], TL)) = T .
+  eq $comp(Q, (T, TL)) = $comp(Q, TL) [owise] .
+
+  sort Dist .
+  op noDist : -> Dist [ctor] .
+  op d : Term Term -> Dist [ctor] .
+  op _&&_ : Dist Dist -> Dist [ctor assoc comm id: noDist] .
+
+  op plus : Module Term Term -> Term .
+  eq plus(M, T, T') = getTerm(metaReduce(M, '_.+_[T, T'])) .
+  op addD : Module Dist Term Term -> Dist .
+  eq addD(M, d(V, Pr) && D, V, T') = d(V, plus(M, Pr, T')) && D .
+  eq addD(M, D, V, T') = d(V, T') && D [owise] .
+
+  *** pila de trabajo: configuración y número de pasos dados
+  sorts WItem WList .
+  subsort WItem < WList .
+  op w : Term Nat -> WItem [ctor] .
+  op nilW : -> WList [ctor] .
+  op _::_ : WList WList -> WList [ctor assoc id: nilW] .
+  op push : TermList Nat WList -> WList .
+  eq push(empty, N, W:WList) = W:WList .
+  eq push((T, TL), N, W:WList) = w(T, N) :: push(TL, N, W:WList) .
+
+  sort DRes .
+  op res : Dist Term Term -> DRes [ctor] .   *** distribución, sin explorar, bloqueados
+
+  op explore : Module QidList WList Nat Dist Term Term -> DRes .
+  eq explore(M, QIL, nilW, MAX, D, Rs, Stk) = res(D, Rs, Stk) .
+  ceq explore(M, QIL, w(T, N) :: W:WList, MAX, D, Rs, Stk)
+    = explore(M, QIL, W:WList, MAX, addD(M, D, comp('result:_, T), comp('prob:_, T)), Rs, Stk)
+   if comp('isEnd:_, T) == 'true.Bool .
+  ceq explore(M, QIL, w(T, N) :: W:WList, MAX, D, Rs, Stk)
+    = explore(M, QIL, W:WList, MAX, D, plus(M, Rs, comp('prob:_, T)), Stk)
+   if comp('isEnd:_, T) =/= 'true.Bool /\ N >= MAX .
+  ceq explore(M, QIL, w(T, N) :: W:WList, MAX, D, Rs, Stk)
+    = explore(M, QIL, push(TL', s N, W:WList), MAX, D, Rs, Stk)
+   if comp('isEnd:_, T) =/= 'true.Bool /\ N < MAX /\ TL' := succs(M, QIL, T) /\ TL' =/= empty .
+  eq explore(M, QIL, w(T, N) :: W:WList, MAX, D, Rs, Stk)
+    = explore(M, QIL, W:WList, MAX, D, Rs, plus(M, Stk, comp('prob:_, T))) [owise] .
+
+  op dist : Module Term Nat -> String .
+  eq dist(M, T, MAX) =
+     showDist(M, explore(M, ruleLabels(getRls(upModule(getName(M), true))), w(getTerm(metaReduce(M, T)), 0),
+                         MAX, noDist, '0.Zero, '0.Zero), MAX) .
+
+  op showDist : Module DRes Nat -> String .
+  eq showDist(M, res(D, Rs, Stk), MAX) =
+     showD(M, D)
+     + (if Rs == '0.Zero then ""
+        else "  sin explorar (más de " + string(MAX, 10) + " pasos): " + pp(M, Rs) + "\n" fi)
+     + (if Stk == '0.Zero then ""
+        else "  en estados bloqueados (error): " + pp(M, Stk) + "\n" fi) .
+  op showD : Module Dist -> String .
+  eq showD(M, noDist) = "" .
+  eq showD(M, d(V, Pr) && D) = "  resultado: " + pp(M, V) + "   prob: " + pp(M, Pr) + "\n" + showD(M, D) .
+
+  *** ---------- model checking LTL ----------
+  *** Se une a metanivel el módulo de trabajo con QSHARP-MC (stutter y
+  *** proposiciones) y se reduce modelCheck en modo sin probabilidades.
+  op mcModule : Module -> Module .
+  eq mcModule(M) = (mod 'QSHARP-LTL-TMP is
+                      (including getName(M) .) (including 'QSHARP-MC .)
+                      sorts none . none none none none none endm) .
+
+  op ltl : Module Term Term -> String .
+  eq ltl(M, T, C) = $ltl(M, getTerm(metaReduce(M, 'modelCheck[T, C]))) .
+  op $ltl : Module Term -> String .
+  eq $ltl(M, 'true.Bool) = "  se cumple\n" .
+  eq $ltl(M, 'counterexample[T, T']) =
+     "  NO se cumple. Contraejemplo (reglas aplicadas):\n    camino: "
+     + printTokens(trLabels(T)) + "\n    ciclo:  " + printTokens(trLabels(T')) + "\n" .
+  eq $ltl(M, T) = "  resultado inesperado: " + pp(M, T) + "\n" [owise] .
+
+  *** etiquetas de las transiciones de un contraejemplo
+  op trLabels : Term -> QidList .
+  op trLabelsL : TermList -> QidList .
+  eq trLabels('`{_`,_`}[T, T']) = ruleName(T') .
+  eq trLabels('nil.TransitionList) = nil .
+  eq trLabels(Q[TL]) = trLabelsL(TL) [owise] .
+  eq trLabels(T) = nil [owise] .
+  eq trLabelsL(empty) = nil .
+  eq trLabelsL((T, TL)) = trLabels(T) trLabelsL(TL) .
+  op ruleName : Term -> QidList .
+  eq ruleName(Cn:Constant) =
+     if getType(Cn:Constant) == 'Qid then downTerm(Cn:Constant, 'err) else getName(Cn:Constant) fi .
+
+  *** comprobar una condición en todos los estados finales
+  op check : Module Term Term -> String .
+  eq check(M, T, C) =
+     $check(M, metaSearch(M, T, finalPat, 'not_[C] = 'true.Bool, '!, unbounded, 0)) .
+  op $check : Module ResultTriple? -> String .
+  eq $check(M, failure) = "  se cumple en todos los estados finales\n" .
+  eq $check(M, {T', Ty, S}) =
+     "  NO se cumple. Contraejemplo:\n    resultado: " + pp(M, val(S, 'RES:Value))
+     + "\n    qubits: " + pp(M, val(S, 'QS:Qubit)) + "\n" .
+endfm
+
+mod QSHARP-IO is
+  pr QSHARP-PROCESSING .
+  pr MAYBE{Term} .
+  inc STD-STREAM .
+  inc FILE .
+
+  var AtS : AttributeSet . vars S D TXT St : String .
+  var FHIn : Oid . var Ty : Type . vars T T' P Ar Qs C : Term .
+  var MOD : Qid . var M : Module . var MP : Maybe{Term} . var Q : Qid .
+  var Reason : String .
+
+  op input:_ : Maybe{Term} -> Attribute [ctor] .
+  op state:_ : State -> Attribute [ctor] .
+  op data:_ : String -> Attribute [ctor gather (&)] .
+  op prog:_ : Maybe{Term} -> Attribute [ctor] .
+  op mod:_ : Qid -> Attribute [ctor] .
+
+  sort State .
+  ops idle waiting reading processing write&wait write&end finished : -> State [ctor] .
+
+  op qsharp : -> Oid [ctor] .
+  op QSharp : -> Cid [ctor] .
+
+  op banner : -> String .
+  eq banner = "\n\t\t MaQ#: Q# en Maude\n\t\t Semántica ejecutable de un subconjunto de Q#\n\n" .
+  *** ---------- lectura de comandos ----------
+  rl [prompt] :
+     wrote(qsharp, stdout) < qsharp : QSharp | state: write&wait, AtS >
+  => < qsharp : QSharp | state: idle, AtS > getLine(stdin, qsharp, "Q#> ") .
+
+  rl [eof] :
+     gotLine(qsharp, stdin, "") < qsharp : QSharp | state: idle, AtS >
+  => < qsharp : QSharp | state: write&end, AtS > write(stdout, qsharp, "\n") .
+
+  crl [parse-command] :
+      gotLine(qsharp, stdin, S) < qsharp : QSharp | input: maybe, state: idle, AtS >
+   => < qsharp : QSharp | input: T, state: waiting, AtS >
+   if S =/= "" /\ {T, Ty} := metaParse(COMMANDS-GRAMMAR, tokenize(S), '@Command@) .
+
+  crl [parse-command-error] :
+      gotLine(qsharp, stdin, S) < qsharp : QSharp | state: idle, AtS >
+   => < qsharp : QSharp | state: write&wait, AtS > write(stdout, qsharp, err("comando no reconocido"))
+   if S =/= "" /\ not (metaParse(COMMANDS-GRAMMAR, tokenize(S), '@Command@) :: ResultPair) .
+
+  *** ---------- open ----------
+  crl [open] :
+      < qsharp : QSharp | input: ('open_['token[T]]), state: waiting, data: D, AtS >
+   => < qsharp : QSharp | input: maybe, state: reading, data: "", AtS >
+      openFile(fileManager, qsharp, S, "r")
+   if S := printTokens(downTerm(T, 'err)) .
+
+  rl [open-error] :
+     fileError(qsharp, fileManager, Reason) < qsharp : QSharp | state: reading, AtS >
+  => < qsharp : QSharp | state: write&wait, AtS > write(stdout, qsharp, err(Reason)) .
+
+  rl [opened] :
+     openedFile(qsharp, fileManager, FHIn) < qsharp : QSharp | state: reading, AtS >
+  => < qsharp : QSharp | state: reading, AtS > getLine(FHIn, qsharp) .
+
+  rl [got-line] :
+     gotLine(qsharp, FHIn, TXT) < qsharp : QSharp | state: reading, data: D, AtS >
+  => < qsharp : QSharp | state: reading, data: (D + TXT), AtS >
+     if TXT == "" then closeFile(FHIn, qsharp) else getLine(FHIn, qsharp) fi .
+
+  rl [closed] :
+     closedFile(qsharp, FHIn) < qsharp : QSharp | state: reading, AtS >
+  => < qsharp : QSharp | state: processing, AtS > .
+
+  crl [load-ok] :
+      < qsharp : QSharp | state: processing, data: D, prog: MP, mod: MOD, AtS >
+   => < qsharp : QSharp | state: write&wait, data: "", prog: P, mod: MOD, AtS >
+      write(stdout, qsharp, ok("Programa cargado. Operaciones: " + opNames(P) + "\n"))
+   if loaded(P) := load(upModule(MOD, false), D) .
+
+  crl [load-error] :
+      < qsharp : QSharp | state: processing, data: D, mod: MOD, AtS >
+   => < qsharp : QSharp | state: write&wait, data: "", mod: MOD, AtS >
+      write(stdout, qsharp, err(S))
+   if loadError(S) := load(upModule(MOD, false), D) .
+
+  *** ---------- comandos sobre el programa cargado ----------
+  crl [exec] :
+      < qsharp : QSharp | input: T, state: waiting, prog: MP, mod: MOD, AtS >
+   => < qsharp : QSharp | input: maybe, state: write&wait, prog: MP, mod: MOD, AtS >
+      write(stdout, qsharp, exec(T, MP, upModule(MOD, false)))
+   if isExec(T) .
+
+  *** ---------- module ----------
+  crl [module] :
+      < qsharp : QSharp | input: ('module_['token[T]]), state: waiting, mod: MOD, AtS >
+   => < qsharp : QSharp | input: maybe, state: write&wait, mod: Q, AtS >
+      write(stdout, qsharp, ok("Módulo de trabajo: " + printTokens(Q) + "\n"))
+   if Q := downTerm(T, 'err) /\ upModule(Q, false) :: Module .
+  crl [module-error] :
+      < qsharp : QSharp | input: ('module_['token[T]]), state: waiting, AtS >
+   => < qsharp : QSharp | input: maybe, state: write&wait, AtS >
+      write(stdout, qsharp, err("ese módulo no está cargado"))
+   if not (upModule(downTerm(T, 'err), false) :: Module) .
+
+  *** ---------- salir ----------
+  rl [quit] :
+     < qsharp : QSharp | input: 'quit.@Command@, state: waiting, AtS >
+  => < qsharp : QSharp | input: maybe, state: write&end, AtS > write(stdout, qsharp, "\nAdiós.\n") .
+  rl [q] :
+     < qsharp : QSharp | input: 'q.@Command@, state: waiting, AtS >
+  => < qsharp : QSharp | input: maybe, state: write&end, AtS > write(stdout, qsharp, "\nAdiós.\n") .
+
+  rl [end] :
+     wrote(qsharp, stdout) < qsharp : QSharp | state: write&end, AtS >
+  => < qsharp : QSharp | state: finished, AtS > .
+
+  op run : -> Configuration .
+  eq run = <> < qsharp : QSharp | input: maybe, state: write&wait, data: "",
+                                  prog: maybe, mod: 'QSHARP-PROPS >
+           write(stdout, qsharp, banner) .
+endm
+
+set print attribute off .
+erew run .

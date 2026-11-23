@@ -1,0 +1,157 @@
+*** Sintaxis de superficie de Q#, tal y como se escribe en un fichero .qs, y
+*** sintaxis de los comandos de la herramienta.
+***
+*** Como en MUnit: las firmas son módulos normales SIN hooks; los tokens y
+*** bubbles se añaden en un FModule construido a metanivel (QSHARP-GRAMMAR,
+*** COMMANDS-GRAMMAR), que es el único que se usa con metaParse.
+
+fmod QSHARP-SURFACE-SIGN is
+  sorts @Token@ @TokenList@ @Exp@ @Args@ @Block@ @Stmt@ @Stmts@ @Else@ @Alloc@
+        @Type@ @Chars@ @Param@ @Params@ @Decl@ @Decls@ .
+  subsort @Token@ < @Exp@ < @Args@ .
+  subsort @Stmt@ < @Stmts@ .
+  subsort @Param@ < @Params@ .
+  subsort @Decl@ < @Decls@ .
+
+  *** expresiones; las llamadas admiten functores: Adjoint S(q), Controlled X([c], t)
+  sort @Callable@ .
+  subsort @Token@ < @Callable@ .
+  ops Adjoint_ Controlled_ : @Callable@ -> @Callable@ [prec 0] .
+  op _`(_`) : @Callable@ @Args@ -> @Exp@ [prec 1] .
+  op _`(`) : @Callable@ -> @Exp@ [prec 1] .
+  op _`[_`] : @Exp@ @Exp@ -> @Exp@ [prec 1] .
+  op `[_`] : @Args@ -> @Exp@ .
+  op _`,_ : @Args@ @Args@ -> @Args@ [assoc prec 61] .
+  op -_ : @Exp@ -> @Exp@ [prec 15] .
+  op _*_ : @Exp@ @Exp@ -> @Exp@ [prec 31 gather (E e)] .
+  ops _+_ _-_ : @Exp@ @Exp@ -> @Exp@ [prec 33 gather (E e)] .
+  ops _<_ _<=_ _>_ _>=_ : @Exp@ @Exp@ -> @Exp@ [prec 37] .
+  ops _==_ _!=_ : @Exp@ @Exp@ -> @Exp@ [prec 51] .
+  op not_ : @Exp@ -> @Exp@ [prec 53] .
+  op _and_ : @Exp@ @Exp@ -> @Exp@ [prec 55 gather (E e)] .
+  op _or_ : @Exp@ @Exp@ -> @Exp@ [prec 59 gather (E e)] .
+  op _.._ : @Exp@ @Exp@ -> @Exp@ [prec 65] .
+
+  *** bloques y sentencias
+  op `{`} : -> @Block@ .
+  op `{_`} : @Stmts@ -> @Block@ .
+  op __ : @Stmts@ @Stmts@ -> @Stmts@ [assoc prec 80] .
+
+  op Qubit`(`) : -> @Alloc@ .
+  op Qubit`[_`] : @Exp@ -> @Alloc@ .
+  op use_=_; : @Token@ @Alloc@ -> @Stmt@ .
+  ops let_=_; mutable_=_; set_=_; set_+=_; set_-=_; : @Token@ @Exp@ -> @Stmt@ .
+  op _; : @Exp@ -> @Stmt@ [prec 70] .
+  op return_; : @Exp@ -> @Stmt@ .
+  op if__ : @Exp@ @Block@ -> @Stmt@ [prec 75] .
+  op if___ : @Exp@ @Block@ @Else@ -> @Stmt@ [prec 75] .
+  op else_ : @Block@ -> @Else@ .
+  op elif__ : @Exp@ @Block@ -> @Else@ [prec 75] .
+  op elif___ : @Exp@ @Block@ @Else@ -> @Else@ [prec 75] .
+  op for_in__ : @Token@ @Exp@ @Block@ -> @Stmt@ [prec 75] .
+  op while__ : @Exp@ @Block@ -> @Stmt@ [prec 75] .
+  op repeat_until_; : @Block@ @Exp@ -> @Stmt@ .
+  op repeat_until_fixup_ : @Block@ @Exp@ @Block@ -> @Stmt@ .
+  op within_apply_ : @Block@ @Block@ -> @Stmt@ .
+
+  *** tipos y parámetros
+  ops Qubit Result Unit Int Bool Double : -> @Type@ .
+  op _`[`] : @Type@ -> @Type@ .
+  ops Adj Ctl : -> @Chars@ .
+  op _+_ : @Chars@ @Chars@ -> @Chars@ [prec 0] .
+  op _:_ : @Token@ @Type@ -> @Param@ [prec 20] .
+  op _`,_ : @Params@ @Params@ -> @Params@ [assoc] .
+
+  *** declaraciones
+  op operation_`(_`):__ : @Token@ @Params@ @Type@ @Block@ -> @Decl@ [prec 0] .
+  op operation_`(`):__ : @Token@ @Type@ @Block@ -> @Decl@ [prec 0] .
+  op operation_`(_`):_is__ : @Token@ @Params@ @Type@ @Chars@ @Block@ -> @Decl@ [prec 0] .
+  op operation_`(`):_is__ : @Token@ @Type@ @Chars@ @Block@ -> @Decl@ [prec 0] .
+  op function_`(_`):__ : @Token@ @Params@ @Type@ @Block@ -> @Decl@ [prec 0] .
+  op function_`(`):__ : @Token@ @Type@ @Block@ -> @Decl@ [prec 0] .
+  sort @Attr@ .
+  op @EntryPoint`(`) : -> @Attr@ .
+  op __ : @Attr@ @Decl@ -> @Decl@ [prec 40] .
+  ops import_; open_; : @TokenList@ -> @Decl@ .
+  op __ : @Decls@ @Decls@ -> @Decls@ [assoc] .
+  op namespace_`{_`} : @Token@ @Decls@ -> @Decl@ .
+endfm
+
+fmod QSHARP-COMMANDS-SIGN is
+  sorts @Token@ @Bubble@ @Command@ .
+  op open_ : @Token@ -> @Command@ .
+  op module_ : @Token@ -> @Command@ .
+  op show : -> @Command@ .
+  ops run_ runnp_ : @Token@ -> @Command@ .
+  ops run_`(_`)in_ runnp_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
+  op check_ensures_ : @Token@ @Bubble@ -> @Command@ .
+  op dist_ : @Token@ -> @Command@ .
+  op mc_satisfies_ : @Token@ @Bubble@ -> @Command@ .
+  op mc_`(_`)in_satisfies_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
+  op dist_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
+  op check_`(_`)in_ensures_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
+  ops quit q : -> @Command@ .
+endfm
+
+fmod QSHARP-META-GRAMMARS is
+  pr META-LEVEL .
+
+  var H : Header . vars IL IL' : ImportList . var SS : SortSet .
+  var SSDS : SubsortDeclSet . var ODS : OpDeclSet . var MAS : MembAxSet .
+  var EqS : EquationSet .
+
+  op addImports : ImportList FModule -> FModule .
+  eq addImports(IL', fmod H is IL sorts SS . SSDS ODS MAS EqS endfm) =
+                     fmod H is IL IL' sorts SS . SSDS ODS MAS EqS endfm .
+
+  *** palabras clave y símbolos que no pueden ser identificadores de Q#
+  op keywords : -> QidList .
+  eq keywords = 'operation 'function 'let 'mutable 'set 'use 'if 'elif 'else 'for 'in
+                'while 'repeat 'until 'fixup 'return 'namespace 'open 'import 'is
+                'Adj 'Ctl 'Adjoint 'Controlled 'within 'apply 'and 'or 'not 'Qubit 'Unit 'Int 'Bool 'Result 'Double
+                '== '!= '< '<= '> '>= '+ '- '* '+= '-= '= '; '`, ': '.. '`( '`)
+                '`[ '`] '`{ '`} '@EntryPoint .
+
+  op QSHARP-GRAMMAR : -> FModule [memo] .
+  eq QSHARP-GRAMMAR =
+     addImports((including 'QSHARP-SURFACE-SIGN .),
+       (fmod 'QSHARP-BUBBLES is
+          including 'QID-LIST .
+          sorts none .
+          none
+          op 'token : 'Qid -> '@Token@
+             [special(
+               (id-hook('Bubble, '1 '1)
+                op-hook('qidSymbol, '<Qids>, nil, 'Qid)
+                id-hook('Exclude, keywords)))] .
+          op 'tokenList : 'QidList -> '@TokenList@
+             [special(
+               (id-hook('Bubble, '1 '-1)
+                op-hook('qidListSymbol, '__, 'QidList 'QidList, 'QidList)
+                op-hook('qidSymbol, '<Qids>, nil, 'Qid)
+                id-hook('Exclude, ';)))] .
+          none
+          none
+        endfm)) .
+
+  op COMMANDS-GRAMMAR : -> FModule [memo] .
+  eq COMMANDS-GRAMMAR =
+     addImports((including 'QSHARP-COMMANDS-SIGN .),
+       (fmod 'QSHARP-COMMAND-BUBBLES is
+          including 'QID-LIST .
+          sorts none .
+          none
+          op 'token : 'Qid -> '@Token@
+             [special(
+               (id-hook('Bubble, '1 '1)
+                op-hook('qidSymbol, '<Qids>, nil, 'Qid)))] .
+          op 'bubble : 'QidList -> '@Bubble@
+             [special(
+               (id-hook('Bubble, '1 '-1 '`( '`))
+                op-hook('qidListSymbol, '__, 'QidList 'QidList, 'QidList)
+                op-hook('qidSymbol, '<Qids>, nil, 'Qid)
+                id-hook('Exclude, 'in 'ensures 'satisfies)))] .
+          none
+          none
+        endfm)) .
+endfm

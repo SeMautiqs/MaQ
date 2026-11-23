@@ -1,0 +1,40 @@
+in ../qsharp-props.maude
+
+mod TELEPORT-PROG is
+  pr QSHARP-SYNTAX .
+  op prog : -> Decls .
+  eq prog =
+    (operation 'Teleport ('msg : Qubit, 'target : Qubit) : Unit {
+        use 'reg = Qubit() ;
+        'H('reg) ;
+        'CNOT('reg, 'target) ;
+        'CNOT('msg, 'reg) ;
+        'H('msg) ;
+        let 'm1 = 'M('msg) ;
+        let 'm2 = 'M('reg) ;
+        if 'm1 eq One { 'Z('target) ; }
+        if 'm2 eq One { 'X('target) ; }
+        'Reset('reg) ;
+    }) .
+endm
+
+mod TELEPORT is
+  pr QSHARP-PROPS .
+  pr TELEPORT-PROG .
+  var C : Complex .
+  ops a b : -> Complex .
+  eq Pow(Abs(a), 2) .+ Pow(Abs(b), 2) = 1 .
+  eq C .* Pow(Abs(a), 2) .+ C .* Pow(Abs(b), 2) = C .
+  op init : -> Config .
+  eq init = runWith(prog, 'Teleport, (qb(0), qb(1)),
+                    (q[0]: a . |0> + b . |1>) (q[1]: |0>), 2) .
+endm
+
+*** estados finales
+search init =>! {(qstate: Q:Qubit) (prob: P:Complex) (isEnd: true) R:Comps} .
+*** contraejemplo: ¿algún estado final donde el qubit 1 no tenga el estado original?
+search init =>! {(qstate: Q:Qubit) (isEnd: true) R:Comps}
+  such that qubitAt(Q:Qubit, 1) =/= a . |0> + b . |1> .
+*** con igualdad salvo fase global: no hay contraejemplos
+search init =>! {(qstate: Q:Qubit) (isEnd: true) R:Comps}
+  such that not eqUpToPhase(qubitAt(Q:Qubit, 1), a . |0> + b . |1>) .

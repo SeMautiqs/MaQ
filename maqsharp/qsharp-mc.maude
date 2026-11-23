@@ -1,0 +1,52 @@
+*** Model checking LTL de programas Q#.
+***
+*** Va en un módulo aparte porque añade la regla de stutter en los estados
+*** finales, que el model checker necesita (no admite bloqueos). La herramienta
+*** une este módulo con el de trabajo a metanivel, y dist sigue usando el
+*** módulo sin stutter.
+***
+*** Proposiciones atómicas:
+***   ended            el programa ha terminado
+***   returns(V)       ha terminado devolviendo V
+***   qubit(N, V)      el qubit N está separado y en el estado V
+***   qubitPh(N, V)    igual, salvo fase global (±1, ±i)
+***   entangled(N)     el qubit N está en un bloque de más de un qubit
+***   liveLE(K)        hay como mucho K qubits vivos
+
+sload qsharp-props.maude
+sload model-checker.maude
+
+mod QSHARP-MC is
+  pr QSHARP-PROPS .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+
+  subsort Config < State .
+
+  vars R : Comps . vars V V' : Value . var QS : Qubit . vars N K : Nat .
+  var W : Vector . var NL : NatList . var Vc : Vector . var Pp : Prop .
+
+  ops ended : -> Prop [ctor] .
+  op returns : Value -> Prop [ctor] .
+  ops qubit qubitPh : Nat Vector -> Prop [ctor] .
+  op entangled : Nat -> Prop [ctor] .
+  op liveLE : Nat -> Prop [ctor] .
+
+  op nQubits : Qubit -> Nat .
+  eq nQubits(emp) = 0 .
+  eq nQubits((q[NL]: Vc) QS) = size(NL) + nQubits(QS) .
+
+  op inBig : Qubit Nat -> Bool .
+  eq inBig((q[NL]: Vc) QS, N) = (occurs(N, NL) and size(NL) > 1) or inBig(QS, N) .
+  eq inBig(emp, N) = false .
+
+  eq {(isEnd: true) R} |= ended = true .
+  eq {(isEnd: true) (result: V) R} |= returns(V') = V == V' .
+  eq {(qstate: QS) R} |= qubit(N, W) = qubitAt(QS, N) == W .
+  eq {(qstate: QS) R} |= qubitPh(N, W) = eqUpToPhase(qubitAt(QS, N), W) .
+  eq {(qstate: QS) R} |= entangled(N) = inBig(QS, N) .
+  eq {(qstate: QS) R} |= liveLE(K) = nQubits(QS) <= K .
+  eq C:Config |= Pp = false [owise] .
+
+  rl [stutter] : {(isEnd: true) R} => {(isEnd: true) R} .
+endm

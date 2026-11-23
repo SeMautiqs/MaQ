@@ -1,0 +1,31 @@
+in ../qsharp-props.maude
+
+mod GHZ-PROG is
+  pr QSHARP-SYNTAX .
+  op prog : -> Decls .
+  eq prog =
+    (operation 'Main () : Bool {
+        use 'qs = Qubit[3] ;
+        'H('qs[0]) ;
+        for 'i in 1 .. Length('qs) - 1 {
+            'CNOT('qs[0], 'qs['i]) ;
+        }
+        mutable 'ones = 0 ;
+        for 'q in 'qs {
+            let 'r = 'M('q) ;
+            if 'r eq One { set 'ones += 1 ; }
+        }
+        'ResetAll('qs) ;
+        return 'ones eq 0 or 'ones eq 3 ;
+    }) .
+endm
+
+mod GHZ is
+  pr QSHARP-PROPS .
+  pr GHZ-PROG .
+endm
+
+*** estado justo antes de la primera medida
+search [1] run(prog, 'Main) =>* {(qstate: Q:Qubit) (k: (invoke('M(N:Value)) K:Stmts)) R:Comps} .
+*** resultados finales
+search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) R:Comps} .

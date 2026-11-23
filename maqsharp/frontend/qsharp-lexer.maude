@@ -1,0 +1,49 @@
+*** Lexer previo a tokenize: tokenize solo separa ( ) [ ] { } , y deja
+*** pegados 0..n-1, a==b o x+1. Este lexer:
+***   - elimina comentarios // hasta fin de línea
+***   - convierte saltos de línea y tabuladores en espacios
+***   - rodea de espacios los operadores de Q#, probando primero los de dos
+***     caracteres: == != <= >= .. += -= *= =>
+***   - deja intactos los literales de cadena "..."
+*** Un punto aislado no separa nada, así se conservan Std.Math y 1.0.
+
+fmod QSHARP-LEXER is
+  pr STRING .
+
+  vars S Acc C1 C2 : String .
+  vars I J : Nat .
+
+  op lex : String -> String .
+  eq lex(S) = $lex(S, 0, "") .
+
+  op ops2 : String -> Bool .
+  eq ops2(C2) = C2 == "==" or C2 == "!=" or C2 == "<=" or C2 == ">=" or C2 == ".."
+             or C2 == "+=" or C2 == "-=" or C2 == "*=" or C2 == "=>" .
+
+  op ops1 : String -> Bool .
+  eq ops1(C1) = find("+-*/%<>=!;,:()[]{}", C1, 0) =/= notFound .
+
+  op blank : String -> Bool .
+  eq blank(C1) = C1 == "\n" or C1 == "\t" or C1 == "\r" .
+
+  op $lex : String Nat String -> String .
+  ceq $lex(S, I, Acc) = Acc if I >= length(S) .
+  ceq $lex(S, I, Acc) = $lexAt(S, I, Acc, substr(S, I, 1), substr(S, I, 2))
+   if I < length(S) .
+
+  op $lexAt : String Nat String String String -> String .
+  *** comentarios
+  ceq $lexAt(S, I, Acc, C1, "//") =
+      if J :: Nat then $lex(S, J, Acc + " ") else Acc fi
+   if J := find(S, "\n", I) .
+  eq $lexAt(S, I, Acc, C1, "//") = Acc [owise] .
+  *** cadenas
+  ceq $lexAt(S, I, Acc, "\"", C2) = $lex(S, J + 1, Acc + " " + substr(S, I, sd(J + 1, I)) + " ")
+   if J := find(S, "\"", I + 1) .
+  *** operadores de dos y un carácter, espacios y resto
+  eq $lexAt(S, I, Acc, C1, C2) =
+      if ops2(C2) then $lex(S, I + 2, Acc + " " + C2 + " ")
+      else if ops1(C1) then $lex(S, I + 1, Acc + " " + C1 + " ")
+      else if blank(C1) then $lex(S, I + 1, Acc + " ")
+      else $lex(S, I + 1, Acc + C1) fi fi fi [owise] .
+endfm

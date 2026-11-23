@@ -1,0 +1,522 @@
+*** Q# en Maude: semántica operacional del subconjunto v0.1
+***
+*** Se apoya en la semántica simbólica de qubits de smc4qc:
+***   - estado cuántico: término de sort Qubit, p. ej. (q[0 1]: V) (q[2]: |0>)
+***   - puertas: _.H(_), _.CX(_,_), ... ; medida: _.M(P0/P1, N)
+***
+*** Decisiones:
+***   - Puertas, medidas y Reset son REGLAS: cada paso cuántico es un estado
+***     observable. La medida ramifica en dos reglas, Zero y One, y se poda la
+***     rama de probabilidad 0. La probabilidad acumulada se guarda en prob:.
+***   - La parte clásica (entornos, control, llamadas) son ECUACIONES.
+***   - Q# no permite sombreado de variables, así que al cerrar un bloque basta
+***     restringir el entorno a las variables que existían al abrirlo.
+***   - Al cerrar el bloque de un use, el qubit se libera si está separado y
+***     en |0>; si no, se queda en el estado, cosa que en Q# sería un error.
+
+in qsharp-syntax.maude
+in ../common/smc4qc-patch.maude
+
+mod QSHARP-SEMANTICS is
+  pr QSHARP-SYNTAX .
+  pr SYMBOLIC-REASONING-PATCHED .
+
+  *** referencias a qubits como valores de Q#
+  op qb : Nat -> Value [ctor] .
+
+  *** entornos
+  sorts Bind Env .
+  subsort Bind < Env .
+  op _|->_ : Qid Value -> Bind [ctor prec 40] .
+  op noEnv : -> Env [ctor] .
+  op _&_ : Env Env -> Env [ctor assoc comm id: noEnv prec 45] .
+
+  vars Q Q' : Qid . vars V V' : Value . vars E E1 E2 : Exp . var EL : ExpList .
+  vars Env Env' Old : Env . vars I1 I2 : Int . vars N N1 N2 N3 : Nat .
+
+  op _$in_ : Qid Env -> Bool .
+  eq Q $in ((Q |-> V) & Env) = true .
+  eq Q $in Env = false [owise] .
+
+  op upd : Env Qid Value -> Env .
+  eq upd((Q |-> V) & Env, Q, V') = (Q |-> V') & Env .
+
+  op restrict : Env Env -> Env .
+  eq restrict((Q |-> V) & Env, Old) =
+     if Q $in Old then (Q |-> V) & restrict(Env, Old) else restrict(Env, Old) fi .
+  eq restrict(noEnv, Old) = noEnv .
+
+  *** evaluación de expresiones puras
+  op tb : Bool -> QBool .
+  eq tb((true).Bool) = (true).QBool .
+  eq tb((false).Bool) = (false).QBool .
+
+  eq I1 lt I2 = tb(I1 < I2) .
+  eq I1 le I2 = tb(I1 <= I2) .
+  eq I1 gt I2 = tb(I1 > I2) .
+  eq I1 ge I2 = tb(I1 >= I2) .
+  eq V eq V' = tb(V == V') .
+  eq V neq V' = tb(V =/= V') .
+  eq not (true).QBool = (false).QBool .
+  eq not (false).QBool = (true).QBool .
+  eq (true).QBool and E = E .
+  eq (false).QBool and E = (false).QBool .
+  eq (true).QBool or E = (true).QBool .
+  eq (false).QBool or E = E .
+
+  op ev : Exp Env -> Exp .
+  eq ev(V, Env) = V .
+  eq ev(Q, (Q |-> V) & Env) = V .
+  eq ev(E1 + E2, Env) = ev(E1, Env) + ev(E2, Env) .
+  eq ev(_-_(E1, E2), Env) = _-_(ev(E1, Env), ev(E2, Env)) .
+  eq ev(E1 * E2, Env) = ev(E1, Env) * ev(E2, Env) .
+  eq ev(- E, Env) = -_(ev(E, Env)) .
+  eq ev(E1 lt E2, Env) = ev(E1, Env) lt ev(E2, Env) .
+  eq ev(E1 le E2, Env) = ev(E1, Env) le ev(E2, Env) .
+  eq ev(E1 gt E2, Env) = ev(E1, Env) gt ev(E2, Env) .
+  eq ev(E1 ge E2, Env) = ev(E1, Env) ge ev(E2, Env) .
+  eq ev(E1 eq E2, Env) = ev(E1, Env) eq ev(E2, Env) .
+  eq ev(E1 neq E2, Env) = ev(E1, Env) neq ev(E2, Env) .
+  eq ev(not E, Env) = not ev(E, Env) .
+  eq ev(E1 and E2, Env) = ev(E1, Env) and ev(E2, Env) .
+  eq ev(E1 or E2, Env) = ev(E1, Env) or ev(E2, Env) .
+
+  *** arrays: el valor es arr(lista de valores)
+  op arr : ExpList -> Value [ctor] .
+  op nth : ExpList Nat -> Exp .
+  op len : ExpList -> Nat .
+  eq nth((E, EL), 0) = E .
+  eq nth((E, EL), s N) = nth(EL, N) .
+  eq len(noE) = 0 .
+  eq len((E, EL)) = s len(EL) .
+  eq _`[_`](arr(EL), N) = nth(EL, N) .
+  eq Length(arr(EL)) = len(EL) .
+  eq ev([EL], Env) = arr(evL(EL, Env)) .
+  eq ev(_`[_`](E1, E2), Env) = _`[_`](ev(E1, Env), ev(E2, Env)) .
+  eq ev(Length(E), Env) = Length(ev(E, Env)) .
+
+  op evL : ExpList Env -> ExpList .
+  eq evL(noE, Env) = noE .
+  eq evL((E, EL), Env) = ev(E, Env), evL(EL, Env) .
+
+  op evC : Call Env -> Call .
+  eq evC(Cl:Callable(EL), Env) = Cl:Callable(evL(EL, Env)) .
+
+  *** paso de parámetros
+  op bindP : Params ExpList -> Env .
+  var T : Type . var Ps : Params .
+  eq bindP(noP, noE) = noEnv .
+  eq bindP((Q : T, Ps), (V, EL)) = (Q |-> V) & bindP(Ps, EL) .
+
+  *** elementos internos de la continuación
+  op block : Stmts -> Stmt [ctor] .
+  op restore : Env -> Stmt [ctor] .
+  op frame : Env -> Stmt [ctor] .
+  op invoke : Call -> Stmt [ctor] .
+  op val : Value -> Stmt [ctor] .
+  ops letRes setRes : Qid -> Stmt [ctor] .
+  ops drop retRes outRes : -> Stmt [ctor] .
+  op forIter : Qid Int Int Stmts -> Stmt [ctor] .
+  op release : Nat -> Stmt [ctor] .
+  op branch : Exp Stmts Stmts -> Stmt [ctor] .
+  op forArr : Qid Exp Stmts -> Stmt [ctor] .
+  op wloop : Exp Stmts Stmt -> Stmt [ctor] .
+  op rptChk : Exp Stmts Stmt -> Stmt [ctor] .
+
+  *** configuración
+  sorts Comp Comps Config .
+  subsort Comp < Comps .
+  op none : -> Comps [ctor] .
+  op __ : Comps Comps -> Comps [ctor assoc comm id: none] .
+  op qstate:_ : Qubit -> Comp [ctor] .
+  op k:_ : Stmts -> Comp [ctor] .
+  op env:_ : Env -> Comp [ctor] .
+  op decls:_ : Decls -> Comp [ctor] .
+  op next:_ : Nat -> Comp [ctor] .
+  op prob:_ : Complex -> Comp [ctor] .
+  op result:_ : Value -> Comp [ctor] .
+  op isEnd:_ : Bool -> Comp [ctor] .
+  op {_} : Comps -> Config [ctor] .
+
+  vars K : Stmts . vars Ss Ss1 Ss2 : Stmts . var St : Stmt . var R : Comps .
+  var C : Call . vars QS QS' : Qubit . var Pr : Complex . var Pr' : Real . var D : Decls .
+  var B : Bool .
+
+  *** ejecutar un programa: operación de entrada sin argumentos
+  op run : Decls Qid -> Config .
+  eq run(D, Q) = runWith(D, Q, noE, emp, 0) .
+
+  *** ejecutar una operación con argumentos, estado inicial y primer índice libre
+  op runWith : Decls Qid ExpList Qubit Nat -> Config .
+  eq runWith(D, Q, EL, QS, N) =
+     {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
+      (next: N) (prob: 1) (result: unit) (isEnd: false)} .
+
+  *** Modo sin probabilidades: prob: queda fija en untracked. Con bucles
+  *** repeat-until la probabilidad acumulada haría infinito el espacio de
+  *** estados; en este modo el grafo es finito y sirve para model checking.
+  op untracked : -> Complex [ctor] .
+  var Cx : Complex .
+  eq untracked .* Cx = untracked .
+  op runNP : Decls Qid -> Config .
+  op runWithNP : Decls Qid ExpList Qubit Nat -> Config .
+  eq runNP(D, Q) = runWithNP(D, Q, noE, emp, 0) .
+  eq runWithNP(D, Q, EL, QS, N) =
+     {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
+      (next: N) (prob: untracked) (result: unit) (isEnd: false)} .
+
+  *** ---------------- sentencias ----------------
+  eq {(k: ((let Q = E ;) K)) (env: Env) R}
+   = {(k: K) (env: ((Q |-> ev(E, Env)) & Env)) R} .
+  eq {(k: ((mutable Q = E ;) K)) (env: Env) R}
+   = {(k: K) (env: ((Q |-> ev(E, Env)) & Env)) R} .
+  eq {(k: ((set Q = E ;) K)) (env: Env) R}
+   = {(k: K) (env: upd(Env, Q, ev(E, Env))) R} .
+
+  *** llamadas en la raíz de una sentencia
+  eq {(k: ((let Q = C ;) K)) (env: Env) R}
+   = {(k: (invoke(evC(C, Env)) letRes(Q) K)) (env: Env) R} .
+  eq {(k: ((mutable Q = C ;) K)) (env: Env) R}
+   = {(k: (invoke(evC(C, Env)) letRes(Q) K)) (env: Env) R} .
+  eq {(k: ((set Q = C ;) K)) (env: Env) R}
+   = {(k: (invoke(evC(C, Env)) setRes(Q) K)) (env: Env) R} .
+  eq {(k: ((C ;) K)) (env: Env) R}
+   = {(k: (invoke(evC(C, Env)) drop K)) (env: Env) R} .
+  eq {(k: ((return C ;) K)) (env: Env) R}
+   = {(k: (invoke(evC(C, Env)) retRes K)) (env: Env) R} .
+
+  *** recogida del valor devuelto por una llamada
+  eq {(k: (val(V) letRes(Q) K)) (env: Env) R} = {(k: K) (env: ((Q |-> V) & Env)) R} .
+  eq {(k: (val(V) setRes(Q) K)) (env: Env) R} = {(k: K) (env: upd(Env, Q, V)) R} .
+  eq {(k: (val(V) drop K)) R} = {(k: K) R} .
+  eq {(k: (val(V) retRes K)) R} = {(k: ((return V ;) K)) R} .
+  eq {(k: (val(V) outRes K)) (result: V') (isEnd: B) R}
+   = {(k: K) (result: V) (isEnd: true) R} .
+
+  *** return: se descarta la continuación hasta el marco de la llamada,
+  *** ejecutando antes las liberaciones de qubits pendientes
+  eq {(k: ((return E ;) frame(Old) K)) (env: Env) R}
+   = {(k: (val(ev(E, Env)) K)) (env: Old) R} .
+  eq {(k: ((return E ;) release(N) K)) R} = {(k: (release(N) (return E ;) K)) R} .
+  eq {(k: ((return E ;) restore(Old) K)) R} = {(k: ((return E ;) K)) R} .
+  eq {(k: ((return E ;) St K)) R} = {(k: ((return E ;) K)) R} [owise] .
+
+  *** fin del cuerpo sin return: se devuelve unit
+  eq {(k: (frame(Old) K)) (env: Env) R} = {(k: (val(unit) K)) (env: Old) R} .
+
+  *** control
+  eq {(k: ((if E { Ss1 } else { Ss2 }) K)) (env: Env) R}
+   = {(k: (branch(ev(E, Env), Ss1, Ss2) K)) (env: Env) R} .
+  eq branch((true).QBool, Ss1, Ss2) = block(Ss1) .
+  eq branch((false).QBool, Ss1, Ss2) = block(Ss2) .
+
+  eq {(k: ((for Q in E1 .. E2 { Ss }) K)) (env: Env) R}
+   = {(k: (forIter(Q, ev(E1, Env), ev(E2, Env), Ss) K)) (env: Env) R} .
+  eq forIter(Q, I1, I2, Ss) =
+     if I1 <= I2 then block((let Q = I1 ;) Ss) forIter(Q, I1 + 1, I2, Ss) else skip fi .
+
+  eq {(k: ((for Q in E { Ss }) K)) (env: Env) R}
+   = {(k: (forArr(Q, ev(E, Env), Ss) K)) (env: Env) R} .
+  eq forArr(Q, arr((V, EL)), Ss) = block((let Q = V ;) Ss) forArr(Q, arr(EL), Ss) .
+  eq forArr(Q, arr(noE), Ss) = skip .
+
+  *** while: una iteración cada vez, sin anidar bloques
+  var W : Stmt .
+  eq {(k: ((while E { Ss }) K)) (env: Env) R}
+   = {(k: (wloop(ev(E, Env), Ss, (while E { Ss })) K)) (env: Env) R} .
+  eq wloop((true).QBool, Ss, W) = block(Ss) W .
+  eq wloop((false).QBool, Ss, W) = skip .
+
+  *** repeat-until-fixup: la condición y el fixup ven las variables del cuerpo.
+  *** Si la condición falla, se ejecuta el fixup y el repeat se vuelve a
+  *** colocar DESPUÉS del restore del bloque, así la continuación no crece.
+  eq {(k: ((repeat { Ss1 } until E fixup { Ss2 }) K)) (env: Env) R}
+   = {(k: (Ss1 rptChk(E, Ss2, (repeat { Ss1 } until E fixup { Ss2 })) restore(Env) K))
+      (env: Env) R} .
+  eq {(k: (rptChk(E, Ss, W) K)) (env: Env) R}
+   = {(k: rpt(ev(E, Env), Ss, W, K)) (env: Env) R} .
+  op rpt : Exp Stmts Stmt Stmts -> Stmts .
+  eq rpt((true).QBool, Ss, W, K) = K .
+  eq rpt((false).QBool, Ss, W, K) = Ss afterBlock(W, K) .
+  op afterBlock : Stmt Stmts -> Stmts .
+  eq afterBlock(W, restore(Old) K) = restore(Old) W K .
+  eq afterBlock(W, St K) = St afterBlock(W, K) [owise] .
+
+  *** bloques y ámbitos
+  eq {(k: (block(Ss) K)) (env: Env) R} = {(k: (Ss restore(Env) K)) (env: Env) R} .
+  eq {(k: (restore(Old) K)) (env: Env) R} = {(k: K) (env: restrict(Env, Old)) R} .
+
+  *** Fase global de un qubit separado: si un bloque de un solo qubit es
+  *** c . |k>, como los estados están normalizados |c| = 1 y c es una fase
+  *** global del estado completo, físicamente irrelevante. Se elimina. Sin
+  *** esto, tras medir un estado con fases de T, smc4qc deja c como una
+  *** expresión con raíces que no sabe reducir a módulo 1, y la siguiente
+  *** medida o Reset se bloquea.
+  var Kt : Ket .
+  eq (q[N]: (Cx . Kt)) = (q[N]: Kt) .
+
+  *** reserva y liberación de qubits
+  eq {(qstate: QS) (k: ((use Q = Qubit() ;) K)) (env: Env) (next: N) R}
+   = {(qstate: (QS (q[N]: |0>))) (k: insRel(N, K)) (env: ((Q |-> qb(N)) & Env))
+      (next: (N + 1)) R} .
+
+  var NN : Nat .
+  ceq {(qstate: QS) (k: ((use Q = Qubit[E] ;) K)) (env: Env) (next: N) R}
+   = {(qstate: (QS newQs(N, NN))) (k: insRels(N, NN, K))
+      (env: ((Q |-> arr(qbs(N, NN))) & Env)) (next: (N + NN)) R}
+   if NN := ev(E, Env) .
+
+  op newQs : Nat Nat -> Qubit .
+  eq newQs(N, 0) = emp .
+  eq newQs(N, s NN) = (q[N]: |0>) newQs(s N, NN) .
+  op qbs : Nat Nat -> ExpList .
+  eq qbs(N, 0) = noE .
+  eq qbs(N, s NN) = qb(N), qbs(s N, NN) .
+  op insRels : Nat Nat Stmts -> Stmts .
+  eq insRels(N, 0, K) = K .
+  eq insRels(N, s NN, K) = insRels(s N, NN, insRel(N, K)) .
+
+  op insRel : Nat Stmts -> Stmts .
+  eq insRel(N, restore(Old) K) = release(N) restore(Old) K .
+  eq insRel(N, frame(Old) K) = release(N) frame(Old) K .
+  eq insRel(N, skip) = release(N) .
+  eq insRel(N, St K) = St insRel(N, K) [owise] .
+
+  *** al liberar, next pasa a ser el primer índice libre según los qubits vivos;
+  *** así los estados son canónicos y los bucles con use tienen grafo finito
+  eq {(qstate: ((q[N]: |0>) QS)) (k: (release(N) K)) (next: N1) R}
+   = {(qstate: QS) (k: K) (next: nextFree(QS)) R} .
+
+  var NL : NatList . var Vc : Vector .
+  op nextFree : Qubit -> Nat .
+  op maxL : NatList -> Nat .
+  eq nextFree(emp) = 0 .
+  eq nextFree((q[NL]: Vc) QS) = max(s maxL(NL), nextFree(QS)) .
+  eq maxL(N) = N .
+  eq maxL(__(N, NL)) = max(N, maxL(NL)) .
+  eq {(k: (release(N) K)) R} = {(k: K) R} [owise] .
+
+  *** llamadas a operaciones de usuario
+  eq {(k: (invoke(Q(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(k: (Ss frame(Env) K)) (env: bindP(Ps, EL))
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
+
+  *** intrínsecas que se reducen a otras sentencias
+  eq {(k: (invoke('ResetAll(arr((V, EL)))) K)) R}
+   = {(k: (('Reset(V) ;) invoke('ResetAll(arr(EL))) K)) R} .
+  eq {(k: (invoke('ResetAll(arr(noE))) K)) R} = {(k: (val(unit) K)) R} .
+
+  *** ---------------- functores y within/apply ----------------
+  var Cl : Callable . vars Cs Cs' Args : ExpList . var Ss3 : Stmts .
+
+  *** within { A } apply { B }  =  A ; B ; Adjoint A, cada uno en su ámbito
+  eq {(k: ((within { Ss1 } apply { Ss2 }) K)) R}
+   = {(k: (block(Ss1) block(Ss2) block(adj(Ss1)) K)) R} .
+
+  *** adjunto de un cuerpo: orden inverso y cada llamada con Adjoint; las
+  *** ligaduras clásicas y las reservas iniciales se mantienen delante
+  op adj : Stmts -> Stmts .
+  op adjS : Stmt -> Stmt .
+  eq adj(skip) = skip .
+  eq adj((let Q = E ;) Ss) = (let Q = E ;) adj(Ss) .
+  eq adj((mutable Q = E ;) Ss) = (mutable Q = E ;) adj(Ss) .
+  eq adj((use Q = A:Alloc ;) Ss) = (use Q = A:Alloc ;) adj(Ss) .
+  eq adj(St Ss) = adj(Ss) adjS(St) [owise] .
+  eq adjS(Cl(EL) ;) = (Adjoint Cl)(EL) ; .
+  eq adjS(if E { Ss1 } else { Ss2 }) = if E { adj(Ss1) } else { adj(Ss2) } .
+  eq adjS(for Q in E1 .. E2 { Ss }) = forDown(Q, E2, E1, adj(Ss)) .
+  eq adjS(for Q in E { Ss }) = forArrDown(Q, E, adj(Ss)) .
+  eq adjS(within { Ss1 } apply { Ss2 }) = within { Ss1 } apply { adj(Ss2) } .
+  eq adjS(St) = St [owise] .
+
+  *** bucles descendentes, para el adjunto de un for
+  op forDown : Qid Exp Exp Stmts -> Stmt [ctor] .
+  op forArrDown : Qid Exp Stmts -> Stmt [ctor] .
+  op forIterDown : Qid Int Int Stmts -> Stmt [ctor] .
+  eq {(k: (forDown(Q, E1, E2, Ss) K)) (env: Env) R}
+   = {(k: (forIterDown(Q, ev(E1, Env), ev(E2, Env), Ss) K)) (env: Env) R} .
+  eq forIterDown(Q, I1, I2, Ss) =
+     if I1 >= I2 then block((let Q = I1 ;) Ss) forIterDown(Q, _-_(I1, 1), I2, Ss) else skip fi .
+  eq {(k: (forArrDown(Q, E, Ss) K)) (env: Env) R}
+   = {(k: (forArr(Q, revArr(ev(E, Env)), Ss) K)) (env: Env) R} .
+  op revArr : Exp -> Exp .
+  op revL : ExpList -> ExpList .
+  eq revArr(arr(EL)) = arr(revL(EL)) .
+  eq revL(noE) = noE .
+  eq revL((E, EL)) = revL(EL), E .
+
+  *** versión controlada de un cuerpo: cada llamada recibe los controles
+  op ctl : Stmts ExpList -> Stmts .
+  op ctlS : Stmt ExpList -> Stmt .
+  eq ctl(skip, Cs) = skip .
+  eq ctl(St Ss, Cs) = ctlS(St, Cs) ctl(Ss, Cs) .
+  eq ctlS(Cl(EL) ;, Cs) = (Controlled Cl)(arr(Cs), EL) ; .
+  eq ctlS(let Q = _`(_`)(Cl, EL) ;, Cs) = let Q = _`(_`)(Controlled Cl, (arr(Cs), EL)) ; .
+  eq ctlS(mutable Q = _`(_`)(Cl, EL) ;, Cs) = mutable Q = _`(_`)(Controlled Cl, (arr(Cs), EL)) ; .
+  eq ctlS(set Q = _`(_`)(Cl, EL) ;, Cs) = set Q = _`(_`)(Controlled Cl, (arr(Cs), EL)) ; .
+  eq ctlS(if E { Ss1 } else { Ss2 }, Cs) = if E { ctl(Ss1, Cs) } else { ctl(Ss2, Cs) } .
+  eq ctlS(for Q in E1 .. E2 { Ss }, Cs) = for Q in E1 .. E2 { ctl(Ss, Cs) } .
+  eq ctlS(for Q in E { Ss }, Cs) = for Q in E { ctl(Ss, Cs) } .
+  eq ctlS(within { Ss1 } apply { Ss2 }, Cs) = within { Ss1 } apply { ctl(Ss2, Cs) } .
+  eq ctlS(St, Cs) = St [owise] .
+
+  *** invocación de operaciones de usuario con functores
+  eq {(k: (invoke((Adjoint Q)(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(k: (adj(Ss) frame(Env) K)) (env: bindP(Ps, EL))
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
+  eq {(k: (invoke((Controlled Q)(arr(Cs), EL)) K)) (env: Env)
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(k: (ctl(Ss, Cs) frame(Env) K)) (env: bindP(Ps, EL))
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
+  eq {(k: (invoke((Controlled Adjoint Q)(arr(Cs), EL)) K)) (env: Env)
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(k: (ctl(adj(Ss), Cs) frame(Env) K)) (env: bindP(Ps, EL))
+      (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
+
+  *** Controlled anidado: se juntan las listas de controles
+  eq invoke((Controlled Controlled Cl)(arr(Cs), arr(Cs'), EL))
+   = invoke((Controlled Cl)(arr((Cs, Cs')), EL)) .
+  *** sin controles, la operación original
+  eq invoke((Controlled Cl)(arr(noE), EL)) = invoke(Cl(EL)) .
+
+  *** intrínsecas: adjuntos
+  op selfAdj : Qid -> Bool .
+  eq selfAdj(Q) = Q == 'I or Q == 'X or Q == 'Y or Q == 'Z or Q == 'H or Q == 'CNOT
+               or Q == 'CY or Q == 'CZ or Q == 'SWAP or Q == 'CCNOT .
+  ceq invoke((Adjoint Q)(EL)) = invoke(Q(EL)) if selfAdj(Q) .
+  eq invoke((Adjoint 'S)(EL)) = invoke('Sdg(EL)) .
+  eq invoke((Adjoint 'Sdg)(EL)) = invoke('S(EL)) .
+  eq invoke((Adjoint 'T)(EL)) = invoke('Tdg(EL)) .
+  eq invoke((Adjoint 'Tdg)(EL)) = invoke('T(EL)) .
+  ceq invoke((Controlled Adjoint Q)(EL)) = invoke((Controlled Q)(EL)) if selfAdj(Q) .
+  eq invoke((Controlled Adjoint 'S)(EL)) = invoke((Controlled 'Sdg)(EL)) .
+  eq invoke((Controlled Adjoint 'T)(EL)) = invoke((Controlled 'Tdg)(EL)) .
+
+  *** intrínsecas de dos o tres qubits bajo Controlled: más controles sobre X, Y o Z
+  vars Wa Wb Wc : Value .
+  eq invoke((Controlled 'CNOT)(arr(Cs), Wa, Wb)) = invoke((Controlled 'X)(arr((Cs, Wa)), Wb)) .
+  eq invoke((Controlled 'CY)(arr(Cs), Wa, Wb)) = invoke((Controlled 'Y)(arr((Cs, Wa)), Wb)) .
+  eq invoke((Controlled 'CZ)(arr(Cs), Wa, Wb)) = invoke((Controlled 'Z)(arr((Cs, Wa)), Wb)) .
+  eq invoke((Controlled 'CCNOT)(arr(Cs), Wa, Wb, Wc))
+   = invoke((Controlled 'X)(arr((Cs, Wa, Wb)), Wc)) .
+  *** SWAP = CNOT(a,b) CNOT(b,a) CNOT(a,b)
+  eq {(k: (invoke((Controlled 'SWAP)(arr(Cs), Wa, Wb)) K)) R}
+   = {(k: (((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) ((Controlled 'CNOT)(arr(Cs), Wb, Wa) ;)
+           ((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) val(unit) K)) R} .
+
+  *** ---------------- aplicador genérico de puertas controladas ----------------
+  *** U de un qubit sobre el objetivo T con controles Cs (todos en |1>):
+  ***   G(c Cs) = P0_c (x) I  +  P1_c (x) G(Cs),   G(nil) = U_T
+  *** donde P0 = B0 y P1 = B3, como hace smc4qc con CX = B0 (x) I + B3 (x) X.
+  *** Primero se juntan en un bloque todos los qubits implicados.
+  op Sdg : -> Matrix .
+  op Tdg : -> Matrix .
+  op Tg : -> Matrix .   *** T corregida: la de smc4qc usa 1 + i en vez de 1 .+ i
+  eq Sdg = B0 + ((-1) .* i) . B3 .
+  eq Tg = B0 + ((1 .+ i) ./ Sqrt(2)) . B3 .
+  eq Tdg = B0 + ((1 .+ ((-1) .* i)) ./ Sqrt(2)) . B3 .
+
+  op gateMat : Qid ~> Matrix .
+  eq gateMat('I) = I .   eq gateMat('X) = X .   eq gateMat('Y) = Y .
+  eq gateMat('Z) = Z .   eq gateMat('H) = H .   eq gateMat('S) = S .
+  eq gateMat('T) = Tg .  eq gateMat('Sdg) = Sdg . eq gateMat('Tdg) = Tdg .
+
+  sort MList .
+  subsort Matrix < MList .
+  op nilM : -> MList [ctor] .
+  op _;;_ : MList MList -> MList [ctor assoc id: nilM] .
+
+  vars NL1 NL2 CsN : NatList . vars Mx U : Matrix . var ML : MList .
+  vars V1 V2 : Vector .
+
+  op idsFor : NatList -> MList .
+  eq idsFor(nil) = nilM .
+  eq idsFor(__(N, NL)) = I ;; idsFor(NL) .
+  eq idsFor(N) = I .
+
+  op setAt : NatList MList Nat Matrix -> MList .
+  eq setAt(__(N, NL), Mx ;; ML, N, U) = U ;; ML .
+  eq setAt(N, Mx, N, U) = U .
+  eq setAt(__(N1, NL), Mx ;; ML, N, U) = Mx ;; setAt(NL, ML, N, U) [owise] .
+
+  op tens : MList -> Matrix .
+  eq tens(Mx) = Mx .
+  eq tens(Mx ;; ML) = Mx (x) tens(ML) [owise] .
+
+  op gTerms : NatList NatList MList Nat Matrix -> Matrix .
+  eq gTerms(NL, nil, ML, N, U) = tens(setAt(NL, ML, N, U)) .
+  eq gTerms(NL, N1, ML, N, U) =
+     tens(setAt(NL, ML, N1, B0)) + gTerms(NL, nil, setAt(NL, ML, N1, B3), N, U) .
+  eq gTerms(NL, __(N1, CsN), ML, N, U) =
+     tens(setAt(NL, ML, N1, B0)) + gTerms(NL, CsN, setAt(NL, ML, N1, B3), N, U) .
+
+  op hits : NatList NatList -> Bool .
+  eq hits(nil, CsN) = false .
+  eq hits(N, CsN) = occurs(N, CsN) .
+  eq hits(__(N, NL), CsN) = occurs(N, CsN) or hits(NL, CsN) .
+
+  op mergeQ : Qubit NatList -> Qubit .
+  ceq mergeQ((q[NL1]: V1) (q[NL2]: V2) QS, CsN) = mergeQ((q[__(NL1, NL2)]: (V1 (x) V2)) QS, CsN)
+   if hits(NL1, CsN) /\ hits(NL2, CsN) .
+  eq mergeQ(QS, CsN) = QS [owise] .
+
+  op applyU : Qubit NatList Nat Matrix -> Qubit .
+  eq applyU(QS, CsN, N, U) = $applyU(mergeQ(QS, __(CsN, N)), CsN, N, U) .
+  op $applyU : Qubit NatList Nat Matrix -> Qubit .
+  ceq $applyU((q[NL]: V1) QS, CsN, N, U) = simplify(q[NL]: (gTerms(NL, CsN, idsFor(NL), N, U) x V1)) QS
+   if occurs(N, NL) .
+
+  op idxs : ExpList -> NatList .
+  eq idxs(noE) = nil .
+  eq idxs((qb(N), EL)) = __(N, idxs(EL)) .
+
+  *** reglas: puertas de un qubit (T, Sdg, Tdg) y versiones controladas
+  rl [T] : {(qstate: QS) (k: (invoke('T(qb(N))) K)) R}
+        => {(qstate: applyU(QS, nil, N, Tg)) (k: (val(unit) K)) R} .
+  rl [Sdg] : {(qstate: QS) (k: (invoke('Sdg(qb(N))) K)) R}
+          => {(qstate: applyU(QS, nil, N, Sdg)) (k: (val(unit) K)) R} .
+  rl [Tdg] : {(qstate: QS) (k: (invoke('Tdg(qb(N))) K)) R}
+          => {(qstate: applyU(QS, nil, N, Tdg)) (k: (val(unit) K)) R} .
+  crl [Controlled] : {(qstate: QS) (k: (invoke((Controlled Q)(arr(Cs), qb(N))) K)) R}
+                  => {(qstate: applyU(QS, idxs(Cs), N, U)) (k: (val(unit) K)) R}
+                  if Cs =/= noE /\ U := gateMat(Q) .
+
+  *** ---------------- intrínsecas cuánticas: reglas ----------------
+  rl [I] : {(k: (invoke('I(qb(N))) K)) R} => {(k: (val(unit) K)) R} .
+  rl [X] : {(qstate: QS) (k: (invoke('X(qb(N))) K)) R}
+        => {(qstate: ((QS).X(N))) (k: (val(unit) K)) R} .
+  rl [Y] : {(qstate: QS) (k: (invoke('Y(qb(N))) K)) R}
+        => {(qstate: ((QS).Y(N))) (k: (val(unit) K)) R} .
+  rl [Z] : {(qstate: QS) (k: (invoke('Z(qb(N))) K)) R}
+        => {(qstate: ((QS).Z(N))) (k: (val(unit) K)) R} .
+  rl [H] : {(qstate: QS) (k: (invoke('H(qb(N))) K)) R}
+        => {(qstate: ((QS).H(N))) (k: (val(unit) K)) R} .
+  rl [S] : {(qstate: QS) (k: (invoke('S(qb(N))) K)) R}
+        => {(qstate: ((QS).S(N))) (k: (val(unit) K)) R} .
+  rl [CNOT] : {(qstate: QS) (k: (invoke('CNOT(qb(N1), qb(N2))) K)) R}
+           => {(qstate: ((QS).CX(N1, N2))) (k: (val(unit) K)) R} .
+  rl [CY] : {(qstate: QS) (k: (invoke('CY(qb(N1), qb(N2))) K)) R}
+         => {(qstate: ((QS).CY(N1, N2))) (k: (val(unit) K)) R} .
+  rl [CZ] : {(qstate: QS) (k: (invoke('CZ(qb(N1), qb(N2))) K)) R}
+         => {(qstate: ((QS).CZ(N1, N2))) (k: (val(unit) K)) R} .
+  rl [SWAP] : {(qstate: QS) (k: (invoke('SWAP(qb(N1), qb(N2))) K)) R}
+           => {(qstate: ((QS).SWAP(N1, N2))) (k: (val(unit) K)) R} .
+  rl [CCNOT] : {(qstate: QS) (k: (invoke('CCNOT(qb(N1), qb(N2), qb(N3))) K)) R}
+            => {(qstate: ((QS).CCX(N1, N2, N3))) (k: (val(unit) K)) R} .
+
+  *** medida en base computacional
+  crl [M-Zero] : {(qstate: QS) (k: (invoke('M(qb(N))) K)) (prob: Pr) R}
+              => {(qstate: QS') (k: (val(Zero) K)) (prob: (Pr .* Pr')) R}
+              if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .
+  crl [M-One] : {(qstate: QS) (k: (invoke('M(qb(N))) K)) (prob: Pr) R}
+             => {(qstate: QS') (k: (val(One) K)) (prob: (Pr .* Pr')) R}
+             if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
+
+  *** Reset: medir y, si sale One, aplicar X
+  crl [Reset-Zero] : {(qstate: QS) (k: (invoke('Reset(qb(N))) K)) (prob: Pr) R}
+                  => {(qstate: QS') (k: (val(unit) K)) (prob: (Pr .* Pr')) R}
+                  if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .
+  crl [Reset-One] : {(qstate: QS) (k: (invoke('Reset(qb(N))) K)) (prob: Pr) R}
+                 => {(qstate: ((QS').X(N))) (k: (val(unit) K)) (prob: (Pr .* Pr')) R}
+                 if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
+endm

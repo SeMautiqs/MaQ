@@ -1,0 +1,12 @@
+*** Amplitudes simbólicas a y b con |a|^2 + |b|^2 = 1, para usar con
+***   maude -allow-files examples/symbolic.maude qsharp-io.maude
+***   Q#> module SYMBOLIC
+sload ../qsharp-props.maude
+
+mod SYMBOLIC is
+  pr QSHARP-PROPS .
+  var C : Complex .
+  ops a b : -> Complex .
+  eq Pow(Abs(a), 2) .+ Pow(Abs(b), 2) = 1 .
+  eq C .* Pow(Abs(a), 2) .+ C .* Pow(Abs(b), 2) = C .
+endm

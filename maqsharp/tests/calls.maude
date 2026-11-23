@@ -1,0 +1,33 @@
+in ../qsharp-semantics.maude
+
+mod CALLS-PROG is
+  pr QSHARP-SYNTAX .
+  op prog : -> Decls .
+  eq prog =
+    (operation 'RandomBit () : Result {
+        use 'q = Qubit() ;
+        'H('q) ;
+        let 'r = 'M('q) ;
+        'Reset('q) ;
+        return 'r ;
+    })
+    (operation 'CountOnes ('n : Int) : Int {
+        mutable 'c = 0 ;
+        for 'i in 1 .. 'n {
+            let 'r = 'RandomBit() ;
+            if 'r eq One { set 'c += 1 ; }
+        }
+        return 'c ;
+    })
+    (operation 'Main () : Int {
+        let 'x = 'CountOnes(3) ;
+        return 'x * 10 ;
+    }) .
+endm
+
+mod CALLS is
+  pr QSHARP-SEMANTICS .
+  pr CALLS-PROG .
+endm
+
+search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) (env: E:Env) (next: N:Nat) R:Comps} .

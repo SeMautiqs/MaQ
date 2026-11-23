@@ -1,0 +1,207 @@
+*** Traducción, a metanivel, de la sintaxis de superficie de Q# (resultado de
+*** metaParse en QSHARP-GRAMMAR) a términos de QSHARP-SYNTAX.
+***
+*** Además de renombrar, la traducción desazucara:
+***   - llamadas dentro de expresiones: se extraen a temporales $t0, $t1, ...
+***     de izquierda a derecha, p. ej.  if M(q) == One { }  pasa a
+***     let '$t0 = 'M('q) ; if '$t0 eq One { }
+***     En repeat-until, el prólogo de la condición va al final del cuerpo.
+***     En while no se admite, porque la condición se reevalúa: queda sin traducir.
+***   - elif  ->  else { if ... }
+***   - set x -= e  ->  set x = x - e
+***   - function  ->  operation;  is Adj + Ctl, @EntryPoint, import y namespace se ignoran
+***
+*** Este módulo importa solo META-LEVEL: QSHARP-SYNTAX no puede convivir con
+*** META-LEVEL porque Qid < Exp hace chocar _,_ y _[_] con los de META-TERM.
+
+fmod QSHARP-TRANSLATE is
+  pr META-LEVEL .
+  pr CONVERSION .
+
+  vars T T' A B C E X F Ty Blk Ss El : Term .
+  vars P P1 P2 E1 E2 : Term .
+  var TL : TermList . var NeTL : NeTermList .
+  vars N N1 N2 N3 : Nat .
+  vars Q Q' : Qid .
+
+  op skipS : -> Term .
+  eq skipS = 'skip.Stmts .
+
+  op seq : Term Term -> Term .
+  eq seq('skip.Stmts, T) = T .
+  eq seq(T, 'skip.Stmts) = T .
+  eq seq(T, T') = '__[T, T'] [owise] .
+
+  *** ---------- átomos ----------
+  op atom : Term -> Term .
+  ceq atom(T) = trAtom(Q, rat(string(Q), 10)) if Q := downTerm(T, 'err) .
+  op trAtom : Qid [Rat] -> Term .
+  eq trAtom(Q, N) = upTerm(N) .
+  eq trAtom('true, R:[Rat]) = 'true.QBool .
+  eq trAtom('false, R:[Rat]) = 'false.QBool .
+  eq trAtom('Zero, R:[Rat]) = 'Zero.Result .
+  eq trAtom('One, R:[Rat]) = 'One.Result .
+  eq trAtom(Q, R:[Rat]) = qcon(Q) [owise] .
+
+  *** metarrepresentación de la constante Qid 'x de QSHARP-SYNTAX: ''x.Qid
+  *** (upTerm daría ''x.Sort, porque en META-LEVEL los Qids son también sorts)
+  op qcon : Qid -> Term .
+  eq qcon(Q) = qid("'" + string(Q) + ".Qid") .
+  op qc : Term -> Term .   *** a partir del argumento de un 'token
+  eq qc(T) = qcon(downTerm(T, 'err)) .
+
+  op tmp : Nat -> Term .
+  eq tmp(N) = qcon(qid("$t" + string(N, 10))) .
+
+  *** ---------- expresiones con extracción de llamadas ----------
+  sort HRes .
+  op h : Term Term Nat -> HRes [ctor] .   *** prólogo, expresión, contador
+
+  op binop : Qid ~> Qid .
+  eq binop('_==_) = '_eq_ .   eq binop('_!=_) = '_neq_ .
+  eq binop('_<_) = '_lt_ .    eq binop('_<=_) = '_le_ .
+  eq binop('_>_) = '_gt_ .    eq binop('_>=_) = '_ge_ .
+  eq binop('_+_) = '_+_ .     eq binop('_-_) = '_-_ .
+  eq binop('_*_) = '_*_ .     eq binop('_and_) = '_and_ .
+  eq binop('_or_) = '_or_ .   eq binop('_`[_`]) = '_`[_`] .
+
+  op isCall : Term -> Bool .
+  eq isCall('_`(_`)['token[F], A]) = downTerm(F, 'err) =/= 'Length .
+  eq isCall('_`(_`)[C, A]) = true [owise] .
+  eq isCall('_`(`)[C]) = true .
+  eq isCall(T) = false [owise] .
+
+  *** callables: identificador con functores Adjoint/Controlled
+  op trCal : Term -> Term .
+  eq trCal('token[F]) = qc(F) .
+  eq trCal('Adjoint_[C]) = 'Adjoint_[trCal(C)] .
+  eq trCal('Controlled_[C]) = 'Controlled_[trCal(C)] .
+
+  op hx : Term Nat -> HRes .
+  eq hx('token[T], N) = h(skipS, atom(T), N) .
+  ceq hx(Q[A, B], N) = h(seq(P1, P2), Q'[E1, E2], N2)
+   if Q' := binop(Q) /\ h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) .
+  ceq hx('-_[A], N) = h(P, '-_[E], N1) if h(P, E, N1) := hx(A, N) .
+  ceq hx('not_[A], N) = h(P, 'not_[E], N1) if h(P, E, N1) := hx(A, N) .
+  ceq hx('`[_`][A], N) = h(P, '`[_`][E], N1) if h(P, E, N1) := hxArgs(A, N) .
+  ceq hx('_`(_`)['token[F], A], N) = h(P, 'Length[E], N1)
+   if downTerm(F, 'err) == 'Length /\ h(P, E, N1) := hx(A, N) .
+  *** una llamada dentro de una expresión pasa a un temporal
+  ceq hx(T, N) = h(seq(P, 'let_=_;[tmp(N1), C]), tmp(N1), s N1)
+   if isCall(T) /\ h(P, C, N1) := trCall(T, N) .
+
+  *** argumentos: un término o una lista '_`,_
+  op hxArgs : Term Nat -> HRes .
+  ceq hxArgs('_`,_[A, NeTL], N) = h(seq(P1, P2), '_`,_[E1, E2], N2)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hxArgs(tail('_`,_, A, NeTL), N1) .
+  eq hxArgs(T, N) = hx(T, N) [owise] .
+
+  *** el resto de una lista de argumentos, otra vez como término
+  op tail : Qid Term NeTermList -> Term .
+  eq tail(Q, A, B) = B .
+  eq tail(Q, A, (B, NeTL)) = Q[B, NeTL] .
+
+  *** llamada en la raíz: se conserva como Call
+  op trCall : Term Nat -> HRes .
+  ceq trCall('_`(_`)[C, A], N) = h(P, '_`(_`)[trCal(C), E], N1)
+   if h(P, E, N1) := hxArgs(A, N) .
+  eq trCall('_`(`)[C], N) = h(skipS, '_`(`)[trCal(C)], N) .
+
+  *** expresión o llamada en la raíz de let/set/return
+  op hTop : Term Nat -> HRes .
+  ceq hTop(T, N) = trCall(T, N) if isCall(T) .
+  eq hTop(T, N) = hx(T, N) [owise] .
+
+  *** ---------- sentencias ----------
+  sort SRes .
+  op sr : Term Nat -> SRes [ctor] .
+
+  op trSs : Term Nat -> SRes .
+  ceq trSs('__[A, NeTL], N) = sr(seq(P1, P2), N2)
+   if sr(P1, N1) := trS(A, N) /\ sr(P2, N2) := trSs(tail('__, A, NeTL), N1) .
+  eq trSs(T, N) = trS(T, N) [owise] .
+
+  op trB : Term Nat -> SRes .
+  eq trB('`{`}.@Block@, N) = sr(skipS, N) .
+  eq trB('`{_`}[Ss], N) = trSs(Ss, N) .
+
+  op trS : Term Nat -> SRes .
+  *** use
+  eq trS('use_=_;['token[X], 'Qubit`(`).@Alloc@], N) =
+     sr('use_=_;[qc(X), 'Qubit`(`).Alloc], N) .
+  ceq trS('use_=_;['token[X], 'Qubit`[_`][A]], N) =
+      sr(seq(P, 'use_=_;[qc(X), 'Qubit`[_`][E]]), N1)
+   if h(P, E, N1) := hx(A, N) .
+  *** let, mutable, set
+  ceq trS(Q['token[X], A], N) = sr(seq(P, Q[qc(X), E]), N1)
+   if Q == 'let_=_; or Q == 'mutable_=_; or Q == 'set_=_; or Q == 'set_+=_;
+   /\ h(P, E, N1) := hTop(A, N) .
+  ceq trS('set_-=_;['token[X], A], N) =
+      sr(seq(P, 'set_=_;[Q, '_-_[Q, E]]), N1)
+   if Q := qc(X) /\ h(P, E, N1) := hx(A, N) .
+  *** llamada como sentencia y return
+  ceq trS('_;[A], N) = sr(seq(P, '_;[C]), N1) if h(P, C, N1) := trCall(A, N) .
+  ceq trS('return_;[A], N) = sr(seq(P, 'return_;[E]), N1) if h(P, E, N1) := hTop(A, N) .
+  *** if / elif / else
+  ceq trS('if__[A, Blk], N) = sr(seq(P, 'if_`{_`}else`{_`}[E, Ss, skipS]), N2)
+   if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) .
+  ceq trS('if___[A, Blk, El], N) = sr(seq(P, 'if_`{_`}else`{_`}[E, Ss, T]), N3)
+   if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) /\ sr(T, N3) := trElse(El, N2) .
+  *** for sobre rango o sobre array
+  ceq trS('for_in__['token[X], '_.._[A, B], Blk], N) =
+      sr(seq(seq(P1, P2), 'for_in_.._`{_`}[qc(X), E1, E2, Ss]), N3)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ sr(Ss, N3) := trB(Blk, N2) .
+  ceq trS('for_in__['token[X], A, Blk], N) =
+      sr(seq(P, 'for_in_`{_`}[qc(X), E, Ss]), N2)
+   if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) [owise] .
+  *** while: condición sin llamadas
+  ceq trS('while__[A, Blk], N) = sr('while_`{_`}[E, Ss], N2)
+   if h('skip.Stmts, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) .
+  *** repeat-until(-fixup): el prólogo de la condición al final del cuerpo
+  ceq trS('repeat_until_;[Blk, A], N) =
+      sr('repeat`{_`}until_fixup`{_`}[seq(Ss, P), E, skipS], N2)
+   if sr(Ss, N1) := trB(Blk, N) /\ h(P, E, N2) := hx(A, N1) .
+  ceq trS('repeat_until_fixup_[Blk, A, T], N) =
+      sr('repeat`{_`}until_fixup`{_`}[seq(Ss, P), E, C], N3)
+   if sr(Ss, N1) := trB(Blk, N) /\ h(P, E, N2) := hx(A, N1) /\ sr(C, N3) := trB(T, N2) .
+
+  *** within / apply
+  ceq trS('within_apply_[Blk, T], N) = sr('within`{_`}apply`{_`}[Ss, C], N2)
+   if sr(Ss, N1) := trB(Blk, N) /\ sr(C, N2) := trB(T, N1) .
+
+  op trElse : Term Nat -> SRes .
+  eq trElse('else_[Blk], N) = trB(Blk, N) .
+  eq trElse('elif__[A, Blk], N) = trS('if__[A, Blk], N) .
+  eq trElse('elif___[A, Blk, El], N) = trS('if___[A, Blk, El], N) .
+
+  *** ---------- tipos, parámetros, declaraciones ----------
+  op trTy : Term -> Term .
+  eq trTy('_`[`][T]) = '_`[`][trTy(T)] .
+  eq trTy(Cn:Constant) = qid(string(getName(Cn:Constant)) + ".Type") .
+
+  op trPs : Term -> Term .
+  eq trPs('_:_['token[X], Ty]) = '_:_[qc(X), trTy(Ty)] .
+  eq trPs('_`,_[A, NeTL]) = '_`,_[trPs(A), trPs(tail('_`,_, A, NeTL))] .
+
+  op body : Term -> Term .
+  ceq body(Blk) = Ss if sr(Ss, N) := trB(Blk, 0) .
+
+  op trD : Term -> Term .
+  eq trD('operation_`(_`):__['token[F], A, Ty, Blk]) =
+     'operation_`(_`):_`{_`}[qc(F), trPs(A), trTy(Ty), body(Blk)] .
+  eq trD('operation_`(`):__['token[F], Ty, Blk]) =
+     'operation_`(_`):_`{_`}[qc(F), 'noP.Params, trTy(Ty), body(Blk)] .
+  eq trD('operation_`(_`):_is__[F, A, Ty, C, Blk]) = trD('operation_`(_`):__[F, A, Ty, Blk]) .
+  eq trD('operation_`(`):_is__[F, Ty, C, Blk]) = trD('operation_`(`):__[F, Ty, Blk]) .
+  eq trD('function_`(_`):__[F, A, Ty, Blk]) = trD('operation_`(_`):__[F, A, Ty, Blk]) .
+  eq trD('function_`(`):__[F, Ty, Blk]) = trD('operation_`(`):__[F, Ty, Blk]) .
+  eq trD('__['@EntryPoint`(`).@Attr@, T]) = trD(T) .
+  eq trD('import_;[T]) = 'noD.Decls .
+  eq trD('open_;[T]) = 'noD.Decls .
+  eq trD('namespace_`{_`}[X, T]) = trD(T) .
+  eq trD('__[A, NeTL]) = '__[trD(A), trD(tail('__, A, NeTL))] .
+
+  *** programa completo: término de sort Decls de QSHARP-SYNTAX
+  op trProgram : Term -> Term .
+  eq trProgram(T) = trD(T) .
+endfm

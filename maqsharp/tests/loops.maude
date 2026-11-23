@@ -1,0 +1,52 @@
+in ../qsharp-props.maude
+
+mod LOOPS-PROG is
+  pr QSHARP-SYNTAX .
+  op prog : -> Decls .
+  eq prog =
+    *** while clásico
+    (operation 'Count () : Int {
+        mutable 'k = 0 ;
+        while 'k lt 3 { set 'k += 1 ; }
+        return 'k ;
+    })
+    *** repeat-until-success: repetir hasta obtener One
+    (operation 'UntilOne () : Result {
+        mutable 'res = Zero ;
+        repeat {
+            use 'q = Qubit() ;
+            'H('q) ;
+            let 'r = 'M('q) ;
+            'Reset('q) ;
+            set 'res = 'r ;
+        } until 'r eq One ;
+        return 'res ;
+    })
+    *** fixup que ve las variables del cuerpo y deja el qubit en |0>
+    (operation 'Fixup () : Result {
+        mutable 'res = One ;
+        repeat {
+            use 'q = Qubit() ;
+            'H('q) ;
+            let 'r = 'M('q) ;
+            set 'res = 'r ;
+        } until 'r eq Zero
+        fixup {
+            'X('q) ;
+        }
+        return 'res ;
+    }) .
+endm
+
+mod LOOPS is
+  pr QSHARP-PROPS .
+  pr LOOPS-PROG .
+endm
+
+search run(prog, 'Count) =>! {(result: V:Value) R:Comps} .
+search runNP(prog, 'UntilOne) =>! {(result: V:Value) (qstate: Q:Qubit) (prob: P:Complex) R:Comps} .
+search runNP(prog, 'Fixup) =>! {(result: V:Value) (qstate: Q:Qubit) (prob: P:Complex) R:Comps} .
+*** el grafo de estados de RUS es finito: ¿cuántos estados?
+search runNP(prog, 'UntilOne) =>* {(isEnd: true) R:Comps} .
+*** con probabilidades y cota de profundidad: las primeras ramas
+search [3] run(prog, 'UntilOne) =>! {(result: V:Value) (prob: P:Complex) R:Comps} .

@@ -1,0 +1,114 @@
+*** Q# en Maude: sintaxis de un subconjunto pequeño, v0.1
+***
+*** Restricción de diseño: las llamadas a puertas, M u operaciones de usuario
+*** forman un tipo propio, Call, que NO es subtipo de Exp. Solo pueden
+*** aparecer en la raíz de una sentencia:
+***     'H('q) ;   let 'r = 'M('q) ;   set 'r = 'Foo('q) ;   return 'Foo('q) ;
+*** Las expresiones Exp son siempre puras.
+***
+*** Notación respecto a Q#:
+***   - identificadores como Qids: 'q, 'Main
+***   - comparaciones:  ==  !=  <  <=  >  >=   se escriben
+***                     eq  neq lt le  gt  ge
+***     porque los operadores de INT/RAT devuelven Bool y chocarían de kind
+***   - true y false son los booleanos de Q#, distintos de los Bool de Maude
+
+fmod QSHARP-SYNTAX is
+  pr INT .
+  pr QID .
+
+  sorts QBool Result Unit Value Exp ExpList .
+  subsorts Int QBool Result Unit < Value < Exp < ExpList .
+  subsort Qid < Exp .
+
+  *** valores
+  ops true false : -> QBool [ctor] .
+  ops Zero One : -> Result [ctor] .
+  op unit : -> Unit [ctor] .
+
+  *** expresiones puras
+  op _+_ : Exp Exp -> Exp [ditto] .
+  op _-_ : Exp Exp -> Exp [ditto] .
+  op _*_ : Exp Exp -> Exp [ditto] .
+  op -_ : Exp -> Exp [ditto] .
+  ops _lt_ _le_ _gt_ _ge_ : Exp Exp -> Exp [prec 37] .
+  ops _eq_ _neq_ : Exp Exp -> Exp [prec 51] .
+  op not_ : Exp -> Exp [prec 53] .
+  op _and_ : Exp Exp -> Exp [prec 55] .
+  op _or_ : Exp Exp -> Exp [prec 59] .
+
+  *** arrays
+  op `[_`] : ExpList -> Exp [ctor] .
+  op _`[_`] : Exp Exp -> Exp [prec 1] .
+  op Length : Exp -> Exp .
+
+  *** listas de argumentos
+  op noE : -> ExpList [ctor] .
+  op _,_ : ExpList ExpList -> ExpList [ctor assoc id: noE prec 61] .
+
+  *** llamadas a operaciones, intrínsecas o de usuario
+  sorts Callable Call .
+  subsort Qid < Callable .
+  *** functores de Q#
+  op Adjoint_ : Callable -> Callable [ctor prec 0] .
+  op Controlled_ : Callable -> Callable [ctor prec 0] .
+  op _`(_`) : Callable ExpList -> Call [ctor prec 1] .
+  op _`(`) : Callable -> Call [prec 1] .
+  eq Cl:Callable () = Cl:Callable(noE) .
+  *** normalización: Adjoint Adjoint C = C, y Controlled siempre por fuera
+  eq Adjoint Adjoint Cl:Callable = Cl:Callable .
+  eq Adjoint Controlled Cl:Callable = Controlled Adjoint Cl:Callable .
+
+  *** sentencias
+  sorts Stmt Stmts Alloc .
+  subsort Stmt < Stmts .
+  op skip : -> Stmts [ctor] .
+  op __ : Stmts Stmts -> Stmts [ctor assoc id: skip prec 80] .
+
+  op Qubit`(`) : -> Alloc [ctor] .
+  op Qubit`[_`] : Exp -> Alloc [ctor] .
+  op use_=_; : Qid Alloc -> Stmt [ctor] .
+  op let_=_; : Qid Exp -> Stmt [ctor] .
+  op let_=_; : Qid Call -> Stmt [ctor] .
+  op mutable_=_; : Qid Exp -> Stmt [ctor] .
+  op mutable_=_; : Qid Call -> Stmt [ctor] .
+  op set_=_; : Qid Exp -> Stmt [ctor] .
+  op set_=_; : Qid Call -> Stmt [ctor] .
+  op set_+=_; : Qid Exp -> Stmt .
+  op _; : Call -> Stmt [ctor prec 70] .
+  op return_; : Exp -> Stmt [ctor] .
+  op return_; : Call -> Stmt [ctor] .
+  op if_{_} : Exp Stmts -> Stmt .
+  op if_{_}else{_} : Exp Stmts Stmts -> Stmt [ctor] .
+  op for_in_.._{_} : Qid Exp Exp Stmts -> Stmt [ctor] .
+  op for_in_{_} : Qid Exp Stmts -> Stmt [ctor] .
+  op within{_}apply{_} : Stmts Stmts -> Stmt [ctor] .
+  op while_{_} : Exp Stmts -> Stmt [ctor] .
+  op repeat{_}until_; : Stmts Exp -> Stmt .
+  op repeat{_}until_fixup{_} : Stmts Exp Stmts -> Stmt [ctor] .
+
+  var Q : Qid . var E : Exp . var Ss : Stmts .
+  eq if E { Ss } = if E { Ss } else { skip } .
+  eq set Q += E ; = set Q = Q + E ; .
+  eq repeat { Ss } until E ; = repeat { Ss } until E fixup { skip } .
+
+  *** tipos: solo anotación; se asume que el programa compila en Q#
+  sorts Type Param Params .
+  subsort Param < Params .
+  ops Int Bool Result Unit Qubit Double : -> Type [ctor] .
+  op _`[`] : Type -> Type [ctor] .
+  op _:_ : Qid Type -> Param [ctor prec 20] .
+  op noP : -> Params [ctor] .
+  op _,_ : Params Params -> Params [ctor assoc id: noP] .
+
+  *** declaraciones
+  sorts Decl Decls .
+  subsort Decl < Decls .
+  op operation_`(_`):_{_} : Qid Params Type Stmts -> Decl [ctor] .
+  op operation_`(`):_{_} : Qid Type Stmts -> Decl .
+  op noD : -> Decls [ctor] .
+  op __ : Decls Decls -> Decls [ctor assoc comm id: noD] .
+
+  var T : Type .
+  eq operation Q () : T { Ss } = operation Q (noP) : T { Ss } .
+endfm

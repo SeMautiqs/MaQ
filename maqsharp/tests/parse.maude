@@ -1,0 +1,3 @@
+in ../qsharp-syntax.maude
+red operation 'Bell ('q1 : Qubit, 'q2 : Qubit) : Unit { 'H('q1) ; 'CNOT('q1, 'q2) ; } .
+red operation 'Main () : Result { use 'q = Qubit() ; 'H('q) ; let 'r = 'M('q) ; if 'r eq One { 'X('q) ; } mutable 'n = 0 ; for 'i in 0 .. 3 { set 'n += 'i ; } return 'r ; } .

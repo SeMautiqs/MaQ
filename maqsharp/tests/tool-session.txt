@@ -1,0 +1,36 @@
+open examples/bell.qs
+show
+run Main
+dist Main
+mc Main satisfies <> returns((true).QBool)
+mc Main satisfies [] liveLE(2)
+mc Main satisfies [] ~ entangled(0)
+check Main ensures RES:Value == (true).QBool
+open examples/teleport.qs
+module SYMBOLIC
+run Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>)
+check Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), a . |0> + b . |1>)
+dist Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>)
+mc Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>) satisfies <> [] qubitPh(1, a . |0> + b . |1>)
+open examples/ghz.qs
+run Main
+open examples/rus.qs
+run Count
+runnp UntilOne
+check UntilOne ensures QS:Qubit == emp
+dist UntilOne
+mc UntilOne satisfies <> ended
+mc UntilOne satisfies [] (ended -> returns(One))
+open examples/random.qs
+dist CountOnes
+open examples/functors.qs
+run AdjointUndo
+run AdjointLoop
+run CtlX
+run Toffoli
+run CtlUser
+run WithinApply
+run TPhase
+run TAdjoint
+open examples/errors.qs
+q

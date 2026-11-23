@@ -1,0 +1,28 @@
+*** Parche mínimo sobre smc4qc, sin modificar sus ficheros.
+***
+*** Al medir y separar todos los qubits de un bloque entrelazado,
+*** rmQubitAt* devuelve la matriz nil y queda el término mal tipado
+***   q[nil]: nil
+*** dentro de simplifyOne*, que entonces no reduce. Ese bloque vacío es emp.
+***
+*** Además, falta el conjugado de i: (i)^* no reduce, y sin él no se
+*** simplifican S† ni T†.
+***
+*** Y las operaciones aritméticas solo se declaran sobre Complex, así que una
+*** probabilidad como 1/2 .+ -1/2 .* 1 ./ Sqrt(2) nunca tiene sort Real y la
+*** medida, que exige Prob : Real, se bloquea en cuanto aparece una raíz
+*** por ejemplo tras H T H. Se añaden sobrecargas por subsort sobre Real.
+
+in smc4qc/symbolic-reasoning.maude
+
+fmod SYMBOLIC-REASONING-PATCHED is
+  inc SYMBOLIC-REASONING .
+  eq q[(nil).NatList]: (nil).Matrix = emp .
+  eq (i)^* = (-1) .* i .
+
+  op Sqrt : PosRat -> Real [ditto] .
+  op _.*_ : Real Real -> Real [ditto] .
+  op _./_ : Real Real -> Real [ditto] .
+  op _.+_ : Real Real -> Real [ditto] .
+  op (_)^* : Real -> Real [ditto] .
+endfm

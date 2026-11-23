@@ -1,0 +1,27 @@
+in ../qsharp-semantics.maude
+
+*** el programa solo ve la sintaxis
+mod BELL-PROG is
+  pr QSHARP-SYNTAX .
+  op prog : -> Decls .
+  eq prog =
+    (operation 'Main () : Result {
+        use 'a = Qubit() ;
+        use 'b = Qubit() ;
+        'H('a) ;
+        'CNOT('a, 'b) ;
+        let 'ra = 'M('a) ;
+        let 'rb = 'M('b) ;
+        'Reset('a) ;
+        'Reset('b) ;
+        if 'ra eq 'rb { return true ; } else { return false ; }
+    }) .
+endm
+
+mod BELL is
+  pr QSHARP-SEMANTICS .
+  pr BELL-PROG .
+endm
+
+rew run(prog, 'Main) .
+search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) R:Comps} .

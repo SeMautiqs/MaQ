@@ -60,7 +60,7 @@ or each part separately:
 
 | Claim in the paper | Command | Time |
 |---|---|---|
-| RQ1: the exact distributions computed by MaQ# agree with the Q# simulator on all 26 operations (TODO: table number) | `python3 validation/validate.py 4000` | ~2 min |
+| RQ1: the exact distributions computed by MaQ# agree with the Q# simulator on all 26 operations (TODO: table number) | `python3 validation/validate.py 4000` | < 1 min |
 | RQ4: scalability on GHZ(n) and Grover(n) (TODO: table and figure numbers) | `python3 perf/run_perf.py 120 16` | ~1 h |
 | Examples of Sect. 4 (Bell, teleportation with symbolic amplitudes, RUS, functors) | `./tests/run-tool.sh` | < 1 min |
 

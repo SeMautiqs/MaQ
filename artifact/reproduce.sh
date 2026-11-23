@@ -1,6 +1,6 @@
 #!/bin/sh
 # Full reproduction of the results in the paper.
-#   validation (Section 5, RQ1): about 2 minutes
+#   validation (RQ1): under 1 minute
 #   performance (Section 5, RQ4): about 1 hour with the default limit of 120 s per run
 # Usage: artifact/reproduce.sh [shots] [time_limit_in_seconds] [max_n]
 set -e

@@ -77,3 +77,8 @@ The validation runs each operation on the QDK simulator and compares the observe
 distribution computed by MaQ#. All 19 operations currently agree.
 
 A detailed design note (in Spanish) is in `maqsharp/DESIGN.es.md`.
+
+## License
+
+MaQ is released under the [MIT License](LICENSE). The `common/smc4qc` submodule is a separate
+project by Canh Minh Do and is not covered by this license.

@@ -1,0 +1,5 @@
+.git
+**/.git
+dist
+**/__pycache__
+maqsharp/tmp*.qs

@@ -1,0 +1,37 @@
+# Docker image for the MaQ# artifact.
+#
+# Build from the root of the repository (with the smc4qc submodule checked out):
+#   docker build -f artifact/Dockerfile -t maqsharp:spin27 .
+#
+# Everything needed at run time is installed while building, so the container
+# does not need network access.
+FROM ubuntu:25.04
+
+ARG MAUDE_VERSION=3.5.1
+ARG MAUDE_SHA256=72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c
+ARG QDK_VERSION=1.34.0
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip python3 python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+
+# Maude (official Linux release)
+RUN curl -fsSL -o /tmp/maude.zip \
+      https://github.com/maude-lang/Maude/releases/download/Maude${MAUDE_VERSION}/Maude-${MAUDE_VERSION}-linux-x86_64.zip \
+ && echo "${MAUDE_SHA256}  /tmp/maude.zip" | sha256sum -c - \
+ && mkdir -p /opt/maude && unzip -q /tmp/maude.zip -d /opt/maude \
+ && chmod +x /opt/maude/maude && rm /tmp/maude.zip
+
+# Microsoft Quantum Development Kit, used only by the validation script
+RUN pip3 install --no-cache-dir --break-system-packages qdk==${QDK_VERSION}
+
+ENV PATH=/opt/maude:$PATH \
+    MAUDE_LIB=/opt/maude \
+    QSHARP_PYTHON_TELEMETRY=none
+
+COPY . /MaQ
+RUN test -f /MaQ/common/smc4qc/symbolic-reasoning.maude \
+ || (echo "smc4qc is missing: run 'git submodule update --init' before building" && false)
+
+WORKDIR /MaQ/maqsharp
+CMD ["bash"]

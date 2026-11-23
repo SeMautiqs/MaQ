@@ -1,0 +1,22 @@
+Licenses of the components of the MaQ# artifact
+================================================
+
+The artifact evaluation committee of SPIN 2027 is granted permission to download,
+run and evaluate this artifact for the purposes of artifact evaluation.
+
+MaQ# (everything under MaQ/ except MaQ/common/smc4qc)
+  MIT License, Copyright (c) 2026 Adrián Riesco. See MaQ/LICENSE.
+
+smc4qc (MaQ/common/smc4qc), by Canh Minh Do
+  https://github.com/canhminhdo/smc4qc, release v1.0.2.
+  TODO before uploading: license or written permission from the author for its
+  redistribution in this archive.
+
+Maude 3.5.1 (installed in the Docker image under /opt/maude)
+  GNU General Public License, version 2. Source code:
+  https://github.com/maude-lang/Maude/releases/tag/Maude3.5.1
+
+Microsoft Quantum Development Kit, Python package qdk 1.34.0 (installed in the image)
+  MIT License. https://github.com/microsoft/qsharp
+
+Ubuntu 25.04 base image and its packages: their respective licenses.

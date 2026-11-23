@@ -1,0 +1,43 @@
+Program loaded. Operations: Main
+  result: (true ).QBool   prob: 1/2   qubits: emp
+  result: (true ).QBool   prob: 1
+  holds
+  holds
+  does NOT hold. Counterexample (applied rules):
+    path:  H CNOT M-Zero M-Zero Reset-Zero Reset-Zero
+    cycle: stutter
+  holds in all final states
+Program loaded. Operations: Teleport
+  result: unit   prob: 1/4   qubits: (q [0 ]: |0> )q [1 ]: a . |0> + b . |1>
+  result: unit   prob: 1/4   qubits: (q [0 ]: |1> )q [1 ]: a . |0> + b . |1>
+  result: unit   prob: 1/4   qubits: (q [0 ]: |1> )q [1 ]: (a .* -1 ). |0> + (b
+  holds in all final states
+  result: unit   prob: 1
+  holds
+Program loaded. Operations: Main
+  result: (true ).QBool   prob: 1/2   qubits: emp
+Program loaded. Operations: Count UntilOne
+  result: 3   prob: 1   qubits: emp
+  result: One   qubits: emp
+  holds in all final states
+  result: One   prob: 73786976294838206463/73786976294838206464
+  unexplored (more than 200 steps): 1/73786976294838206464
+  does NOT hold. Counterexample (applied rules):
+    path:  
+    cycle: H M-Zero Reset-Zero
+  holds
+Program loaded. Operations: CountOnes RandomBit
+  result: 0   prob: 1/8
+  result: 1   prob: 3/8
+  result: 2   prob: 3/8
+  result: 3   prob: 1/8
+Program loaded. Operations: AdjointLoop AdjointUndo CtlUser CtlX Flip Prep Rot
+  result: Zero   prob: 1   qubits: emp
+  result: (true ).QBool   prob: 1   qubits: emp
+  result: (true ).QBool   prob: 1/2   qubits: emp
+  result: One   prob: 1   qubits: emp
+  result: (true ).QBool   prob: 1/2   qubits: emp
+  result: One   prob: 1   qubits: emp
+  result: One   prob: 1   qubits: emp
+  result: Zero   prob: 1   qubits: emp
+Error: construct not supported in this subset, e.g. a call in the condition of

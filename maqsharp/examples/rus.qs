@@ -1,4 +1,4 @@
-// Repeat-until-success: la llamada a M en la condición se evalúa al final del cuerpo
+// Repeat-until-success: the call to M in the condition is evaluated at the end of the body
 operation UntilOne() : Result {
     use q = Qubit();
     repeat {

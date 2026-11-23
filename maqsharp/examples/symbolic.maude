@@ -1,4 +1,4 @@
-*** Amplitudes simbólicas a y b con |a|^2 + |b|^2 = 1, para usar con
+*** Symbolic amplitudes a and b with |a|^2 + |b|^2 = 1, to be used with
 ***   maude -allow-files examples/symbolic.maude qsharp-io.maude
 ***   Q#> module SYMBOLIC
 sload ../qsharp-props.maude

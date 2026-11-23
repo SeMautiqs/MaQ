@@ -1,4 +1,4 @@
-*** Propiedades sobre estados cuánticos para search y model checking.
+*** Properties of quantum states for search and model checking.
 
 in qsharp-semantics.maude
 
@@ -7,12 +7,12 @@ mod QSHARP-PROPS is
 
   vars V W : Vector . var M : Matrix .
 
-  *** igualdad salvo fase global, para las fases 1, -1, i, -i
+  *** equality up to global phase, for phases 1, -1, i, -i
   op eqUpToPhase : Vector Vector -> Bool .
   eq eqUpToPhase(V, W) =
      V == W or-else V == (-1) . W or-else V == i . W or-else V == ((-1) .* i) . W .
 
-  *** qubitAt devuelve Matrix; esta versión acepta el resultado tal cual
+  *** qubitAt returns a Matrix; this version accepts the result as it is
   op eqUpToPhase : Matrix Vector -> Bool .
   eq eqUpToPhase(M, W) = false [owise] .
 endm

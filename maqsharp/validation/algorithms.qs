@@ -1,19 +1,19 @@
 namespace Algorithms {
 
-    // ---------- Deutsch–Jozsa con 3 qubits de entrada ----------
+    // ---------- Deutsch–Jozsa with 3 input qubits ----------
 
-    // f constante igual a 1
+    // constant f equal to 1
     operation ConstantOracle(xs : Qubit[], y : Qubit) : Unit {
         X(y);
     }
 
-    // f(x) = x0 xor x1, balanceada
+    // f(x) = x0 xor x1, balanced
     operation BalancedOracle(xs : Qubit[], y : Qubit) : Unit {
         CNOT(xs[0], y);
         CNOT(xs[1], y);
     }
 
-    // devuelve true si la entrada medida es 000, es decir, f constante
+    // returns true if the measured input is 000, i.e., f is constant
     operation DJConstant() : Bool {
         use xs = Qubit[3];
         use y = Qubit();
@@ -48,7 +48,7 @@ namespace Algorithms {
         return zeros;
     }
 
-    // ---------- Bernstein–Vazirani, secreto 101 ----------
+    // ---------- Bernstein–Vazirani, secret 101 ----------
 
     operation BernsteinVazirani() : Int {
         use xs = Qubit[3];
@@ -70,15 +70,15 @@ namespace Algorithms {
 
     // ---------- Grover ----------
 
-    // 2 qubits, elemento marcado 11: una iteración lo encuentra con probabilidad 1
+    // 2 qubits, marked element 11: one iteration finds it with probability 1
     operation Grover2() : Int {
         use a = Qubit();
         use b = Qubit();
         H(a);
         H(b);
-        // oráculo: fase -1 en |11>
+        // oracle: phase -1 on |11>
         CZ(a, b);
-        // difusión
+        // diffusion
         H(a);
         H(b);
         X(a);
@@ -96,16 +96,16 @@ namespace Algorithms {
         return v;
     }
 
-    // 3 qubits, elemento marcado 101: dos iteraciones, probabilidad 121/128
+    // 3 qubits, marked element 101: two iterations, probability 121/128
     operation Grover3() : Int {
         use qs = Qubit[3];
         for q in qs { H(q); }
         for it in 1..2 {
-            // oráculo: fase -1 en |101>
+            // oracle: phase -1 on |101>
             X(qs[1]);
             Controlled Z([qs[0], qs[1]], qs[2]);
             X(qs[1]);
-            // difusión
+            // diffusion
             for q in qs { H(q); }
             for q in qs { X(q); }
             Controlled Z([qs[0], qs[1]], qs[2]);
@@ -120,7 +120,7 @@ namespace Algorithms {
         return v;
     }
 
-    // ---------- Superdense coding: los cuatro mensajes ----------
+    // ---------- Superdense coding: the four messages ----------
 
     operation SuperdenseAll() : Bool {
         mutable ok = true;
@@ -151,8 +151,8 @@ namespace Algorithms {
 
     // ---------- Entanglement swapping ----------
 
-    // dos pares de Bell (a,b) y (c,d); medida de Bell sobre b y c con
-    // correcciones en d; al final a y d forman un par de Bell
+    // two Bell pairs (a,b) and (c,d); Bell measurement on b and c with
+    // corrections on d; at the end a and d form a Bell pair
     operation EntanglementSwapping() : Bool {
         use a = Qubit();
         use b = Qubit();
@@ -166,7 +166,7 @@ namespace Algorithms {
         H(b);
         if M(c) == One { X(d); }
         if M(b) == One { Z(d); }
-        // deshacer el par de Bell (a,d): debe quedar |00>
+        // undo the Bell pair (a,d): |00> must remain
         CNOT(a, d);
         H(a);
         let ok = M(a) == Zero and M(d) == Zero;

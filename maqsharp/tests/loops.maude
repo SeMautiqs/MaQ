@@ -4,13 +4,13 @@ mod LOOPS-PROG is
   pr QSHARP-SYNTAX .
   op prog : -> Decls .
   eq prog =
-    *** while clásico
+    *** classical while
     (operation 'Count () : Int {
         mutable 'k = 0 ;
         while 'k lt 3 { set 'k += 1 ; }
         return 'k ;
     })
-    *** repeat-until-success: repetir hasta obtener One
+    *** repeat-until-success: repeat until One is obtained
     (operation 'UntilOne () : Result {
         mutable 'res = Zero ;
         repeat {
@@ -22,7 +22,7 @@ mod LOOPS-PROG is
         } until 'r eq One ;
         return 'res ;
     })
-    *** fixup que ve las variables del cuerpo y deja el qubit en |0>
+    *** fixup that sees the body variables and leaves the qubit in |0>
     (operation 'Fixup () : Result {
         mutable 'res = One ;
         repeat {
@@ -46,7 +46,7 @@ endm
 search run(prog, 'Count) =>! {(result: V:Value) R:Comps} .
 search runNP(prog, 'UntilOne) =>! {(result: V:Value) (qstate: Q:Qubit) (prob: P:Complex) R:Comps} .
 search runNP(prog, 'Fixup) =>! {(result: V:Value) (qstate: Q:Qubit) (prob: P:Complex) R:Comps} .
-*** el grafo de estados de RUS es finito: ¿cuántos estados?
+*** the state graph of RUS is finite: how many states?
 search runNP(prog, 'UntilOne) =>* {(isEnd: true) R:Comps} .
-*** con probabilidades y cota de profundidad: las primeras ramas
+*** with probabilities and a depth bound: the first branches
 search [3] run(prog, 'UntilOne) =>! {(result: V:Value) (prob: P:Complex) R:Comps} .

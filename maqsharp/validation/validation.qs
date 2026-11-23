@@ -1,6 +1,6 @@
 namespace Validation {
 
-    // H T H |0>: P(One) = (2 - sqrt 2) / 4, unos 0,146
+    // H T H |0>: P(One) = (2 - sqrt 2) / 4, about 0.146
     operation Biased() : Result {
         use q = Qubit();
         H(q);
@@ -11,7 +11,7 @@ namespace Validation {
         return r;
     }
 
-    // H T T T H |0>: P(One) = (2 + sqrt 2) / 4, unos 0,854
+    // H T T T H |0>: P(One) = (2 + sqrt 2) / 4, about 0.854
     operation Biased3() : Result {
         use q = Qubit();
         H(q);
@@ -22,7 +22,7 @@ namespace Validation {
         return r;
     }
 
-    // dos qubits con fase relativa: distribución conjunta codificada como 2*ra + rb
+    // two qubits with a relative phase: joint distribution encoded as 2*ra + rb
     operation TwoQubitPhase() : Int {
         use a = Qubit();
         use b = Qubit();
@@ -38,7 +38,7 @@ namespace Validation {
         return v;
     }
 
-    // Controlled S dos veces = CZ: interferencia en el objetivo
+    // Controlled S twice = CZ: interference on the target
     operation ControlledPhase() : Int {
         use c = Qubit();
         use t = Qubit();
@@ -70,8 +70,8 @@ namespace Validation {
         Reset(register);
     }
 
-    // se prepara un estado no trivial, se teletransporta y se deshace con
-    // Adjoint Prep sobre el destino: siempre Zero
+    // a non-trivial state is prepared, teleported and undone with
+    // Adjoint Prep on the target: always Zero
     operation TeleportCheck() : Result {
         use msg = Qubit();
         use target = Qubit();
@@ -84,8 +84,8 @@ namespace Validation {
         return r;
     }
 
-    // RUS: repetir hasta One, y además contar con un bit extra cuántas
-    // veces sale Zero en el primer intento (0 o 1)
+    // RUS: repeat until One, and also count with an extra qubit how many
+    // times Zero is obtained in the first attempt (0 or 1)
     operation FirstAttempt() : Int {
         use q = Qubit();
         H(q);

@@ -1,18 +1,18 @@
-*** Traducción, a metanivel, de la sintaxis de superficie de Q# (resultado de
-*** metaParse en QSHARP-GRAMMAR) a términos de QSHARP-SYNTAX.
+*** Metalevel translation of the Q# surface syntax (the result of metaParse
+*** in QSHARP-GRAMMAR) into QSHARP-SYNTAX terms.
 ***
-*** Además de renombrar, la traducción desazucara:
-***   - llamadas dentro de expresiones: se extraen a temporales $t0, $t1, ...
-***     de izquierda a derecha, p. ej.  if M(q) == One { }  pasa a
+*** Besides renaming, the translation desugars:
+***   - calls inside expressions: they are extracted into temporaries $t0, $t1, ...
+***     from left to right, e.g.  if M(q) == One { }  becomes
 ***     let '$t0 = 'M('q) ; if '$t0 eq One { }
-***     En repeat-until, el prólogo de la condición va al final del cuerpo.
-***     En while no se admite, porque la condición se reevalúa: queda sin traducir.
+***     In repeat-until, the prologue of the condition goes at the end of the body.
+***     It is not supported in while, since the condition is re-evaluated: left untranslated.
 ***   - elif  ->  else { if ... }
 ***   - set x -= e  ->  set x = x - e
-***   - function  ->  operation;  is Adj + Ctl, @EntryPoint, import y namespace se ignoran
+***   - function  ->  operation;  is Adj + Ctl, @EntryPoint, import and namespace are ignored
 ***
-*** Este módulo importa solo META-LEVEL: QSHARP-SYNTAX no puede convivir con
-*** META-LEVEL porque Qid < Exp hace chocar _,_ y _[_] con los de META-TERM.
+*** This module imports only META-LEVEL: QSHARP-SYNTAX cannot coexist with
+*** META-LEVEL because Qid < Exp makes _,_ and _[_] clash with those of META-TERM.
 
 fmod QSHARP-TRANSLATE is
   pr META-LEVEL .
@@ -32,7 +32,7 @@ fmod QSHARP-TRANSLATE is
   eq seq(T, 'skip.Stmts) = T .
   eq seq(T, T') = '__[T, T'] [owise] .
 
-  *** ---------- átomos ----------
+  *** ---------- atoms ----------
   op atom : Term -> Term .
   ceq atom(T) = trAtom(Q, rat(string(Q), 10)) if Q := downTerm(T, 'err) .
   op trAtom : Qid [Rat] -> Term .
@@ -43,19 +43,19 @@ fmod QSHARP-TRANSLATE is
   eq trAtom('One, R:[Rat]) = 'One.Result .
   eq trAtom(Q, R:[Rat]) = qcon(Q) [owise] .
 
-  *** metarrepresentación de la constante Qid 'x de QSHARP-SYNTAX: ''x.Qid
-  *** (upTerm daría ''x.Sort, porque en META-LEVEL los Qids son también sorts)
+  *** metarepresentation of the QSHARP-SYNTAX Qid constant 'x: ''x.Qid
+  *** (upTerm would give ''x.Sort, because in META-LEVEL Qids are also sorts)
   op qcon : Qid -> Term .
   eq qcon(Q) = qid("'" + string(Q) + ".Qid") .
-  op qc : Term -> Term .   *** a partir del argumento de un 'token
+  op qc : Term -> Term .   *** from the argument of a 'token
   eq qc(T) = qcon(downTerm(T, 'err)) .
 
   op tmp : Nat -> Term .
   eq tmp(N) = qcon(qid("$t" + string(N, 10))) .
 
-  *** ---------- expresiones con extracción de llamadas ----------
+  *** ---------- expressions with call extraction ----------
   sort HRes .
-  op h : Term Term Nat -> HRes [ctor] .   *** prólogo, expresión, contador
+  op h : Term Term Nat -> HRes [ctor] .   *** prologue, expression, counter
 
   op binop : Qid ~> Qid .
   eq binop('_==_) = '_eq_ .   eq binop('_!=_) = '_neq_ .
@@ -71,7 +71,7 @@ fmod QSHARP-TRANSLATE is
   eq isCall('_`(`)[C]) = true .
   eq isCall(T) = false [owise] .
 
-  *** callables: identificador con functores Adjoint/Controlled
+  *** callables: identifier with Adjoint/Controlled functors
   op trCal : Term -> Term .
   eq trCal('token[F]) = qc(F) .
   eq trCal('Adjoint_[C]) = 'Adjoint_[trCal(C)] .
@@ -86,33 +86,33 @@ fmod QSHARP-TRANSLATE is
   ceq hx('`[_`][A], N) = h(P, '`[_`][E], N1) if h(P, E, N1) := hxArgs(A, N) .
   ceq hx('_`(_`)['token[F], A], N) = h(P, 'Length[E], N1)
    if downTerm(F, 'err) == 'Length /\ h(P, E, N1) := hx(A, N) .
-  *** una llamada dentro de una expresión pasa a un temporal
+  *** a call inside an expression is moved to a temporary
   ceq hx(T, N) = h(seq(P, 'let_=_;[tmp(N1), C]), tmp(N1), s N1)
    if isCall(T) /\ h(P, C, N1) := trCall(T, N) .
 
-  *** argumentos: un término o una lista '_`,_
+  *** arguments: a single term or a '_`,_ list
   op hxArgs : Term Nat -> HRes .
   ceq hxArgs('_`,_[A, NeTL], N) = h(seq(P1, P2), '_`,_[E1, E2], N2)
    if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hxArgs(tail('_`,_, A, NeTL), N1) .
   eq hxArgs(T, N) = hx(T, N) [owise] .
 
-  *** el resto de una lista de argumentos, otra vez como término
+  *** the rest of an argument list, again as a term
   op tail : Qid Term NeTermList -> Term .
   eq tail(Q, A, B) = B .
   eq tail(Q, A, (B, NeTL)) = Q[B, NeTL] .
 
-  *** llamada en la raíz: se conserva como Call
+  *** call at the root: kept as a Call
   op trCall : Term Nat -> HRes .
   ceq trCall('_`(_`)[C, A], N) = h(P, '_`(_`)[trCal(C), E], N1)
    if h(P, E, N1) := hxArgs(A, N) .
   eq trCall('_`(`)[C], N) = h(skipS, '_`(`)[trCal(C)], N) .
 
-  *** expresión o llamada en la raíz de let/set/return
+  *** expression or call at the root of let/set/return
   op hTop : Term Nat -> HRes .
   ceq hTop(T, N) = trCall(T, N) if isCall(T) .
   eq hTop(T, N) = hx(T, N) [owise] .
 
-  *** ---------- sentencias ----------
+  *** ---------- statements ----------
   sort SRes .
   op sr : Term Nat -> SRes [ctor] .
 
@@ -139,7 +139,7 @@ fmod QSHARP-TRANSLATE is
   ceq trS('set_-=_;['token[X], A], N) =
       sr(seq(P, 'set_=_;[Q, '_-_[Q, E]]), N1)
    if Q := qc(X) /\ h(P, E, N1) := hx(A, N) .
-  *** llamada como sentencia y return
+  *** call as a statement, and return
   ceq trS('_;[A], N) = sr(seq(P, '_;[C]), N1) if h(P, C, N1) := trCall(A, N) .
   ceq trS('return_;[A], N) = sr(seq(P, 'return_;[E]), N1) if h(P, E, N1) := hTop(A, N) .
   *** if / elif / else
@@ -147,17 +147,17 @@ fmod QSHARP-TRANSLATE is
    if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) .
   ceq trS('if___[A, Blk, El], N) = sr(seq(P, 'if_`{_`}else`{_`}[E, Ss, T]), N3)
    if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) /\ sr(T, N3) := trElse(El, N2) .
-  *** for sobre rango o sobre array
+  *** for over a range or over an array
   ceq trS('for_in__['token[X], '_.._[A, B], Blk], N) =
       sr(seq(seq(P1, P2), 'for_in_.._`{_`}[qc(X), E1, E2, Ss]), N3)
    if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ sr(Ss, N3) := trB(Blk, N2) .
   ceq trS('for_in__['token[X], A, Blk], N) =
       sr(seq(P, 'for_in_`{_`}[qc(X), E, Ss]), N2)
    if h(P, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) [owise] .
-  *** while: condición sin llamadas
+  *** while: condition without calls
   ceq trS('while__[A, Blk], N) = sr('while_`{_`}[E, Ss], N2)
    if h('skip.Stmts, E, N1) := hx(A, N) /\ sr(Ss, N2) := trB(Blk, N1) .
-  *** repeat-until(-fixup): el prólogo de la condición al final del cuerpo
+  *** repeat-until(-fixup): the prologue of the condition at the end of the body
   ceq trS('repeat_until_;[Blk, A], N) =
       sr('repeat`{_`}until_fixup`{_`}[seq(Ss, P), E, skipS], N2)
    if sr(Ss, N1) := trB(Blk, N) /\ h(P, E, N2) := hx(A, N1) .
@@ -174,7 +174,7 @@ fmod QSHARP-TRANSLATE is
   eq trElse('elif__[A, Blk], N) = trS('if__[A, Blk], N) .
   eq trElse('elif___[A, Blk, El], N) = trS('if___[A, Blk, El], N) .
 
-  *** ---------- tipos, parámetros, declaraciones ----------
+  *** ---------- types, parameters, declarations ----------
   op trTy : Term -> Term .
   eq trTy('_`[`][T]) = '_`[`][trTy(T)] .
   eq trTy(Cn:Constant) = qid(string(getName(Cn:Constant)) + ".Type") .
@@ -201,7 +201,7 @@ fmod QSHARP-TRANSLATE is
   eq trD('namespace_`{_`}[X, T]) = trD(T) .
   eq trD('__[A, NeTL]) = '__[trD(A), trD(tail('__, A, NeTL))] .
 
-  *** programa completo: término de sort Decls de QSHARP-SYNTAX
+  *** whole program: term of sort Decls in QSHARP-SYNTAX
   op trProgram : Term -> Term .
   eq trProgram(T) = trD(T) .
 endfm

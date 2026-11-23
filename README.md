@@ -28,9 +28,9 @@ maude -allow-files qsharp-io.maude
 ```
 Q#> open examples/bell.qs
 Q#> dist Main
-  resultado: (true ).QBool   prob: 1
+  result: (true ).QBool   prob: 1
 Q#> mc Main satisfies <> returns((true).QBool)
-  se cumple
+  holds
 ```
 
 With a symbolic input state:
@@ -40,7 +40,7 @@ maude -allow-files examples/symbolic.maude qsharp-io.maude
 Q#> open examples/teleport.qs
 Q#> module SYMBOLIC
 Q#> check Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), a . |0> + b . |1>)
-  se cumple en todos los estados finales
+  holds in all final states
 ```
 
 ## Commands
@@ -49,9 +49,10 @@ Q#> check Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>) ensur
 |---|---|
 | `open f.qs` / `show` | load a Q# file / show its translation |
 | `run Op` / `runnp Op` | final states, with or without path probabilities |
-| `dist Op` | exact distribution of the result, summing over all execution paths |
+| `dist Op` / `dist Op depth N` | exact distribution of the result, summing over all execution paths (up to 200 or N steps) |
 | `check Op ensures cond` | check `cond` on every final state (`QS:Qubit` = state, `RES:Value` = result) |
 | `mc Op satisfies F` | LTL model checking; propositions `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)`, `entangled(N)`, `liveLE(K)` |
+| `states Op` | number of reachable states |
 | `module M` | module used to parse arguments, states and conditions |
 
 Every command also accepts `Op (args) in state` to start from given arguments and a given quantum state.
@@ -71,13 +72,14 @@ cd maqsharp
 ./tests/run-all.sh                  # object-level tests
 ./tests/run-tool.sh                 # a session of the interactive tool
 python3 validation/validate.py      # comparison with the Microsoft QDK simulator
+python3 perf/run_perf.py            # scalability on GHZ(n) and Grover(n)
 ```
 
 The validation runs each operation on the QDK simulator and compares the observed frequencies with the exact
 distribution computed by MaQ#. All 26 operations currently agree, including Deutsch–Jozsa,
 Bernstein–Vazirani, Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 
-A detailed design note (in Spanish) is in `maqsharp/DESIGN.es.md`.
+Design notes are in `maqsharp/DESIGN.md`.
 
 ## License
 

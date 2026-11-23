@@ -30,11 +30,11 @@ mod TELEPORT is
                     (q[0]: a . |0> + b . |1>) (q[1]: |0>), 2) .
 endm
 
-*** estados finales
+*** final states
 search init =>! {(qstate: Q:Qubit) (prob: P:Complex) (isEnd: true) R:Comps} .
-*** contraejemplo: ¿algún estado final donde el qubit 1 no tenga el estado original?
+*** counterexample: is there a final state where qubit 1 does not hold the original state?
 search init =>! {(qstate: Q:Qubit) (isEnd: true) R:Comps}
   such that qubitAt(Q:Qubit, 1) =/= a . |0> + b . |1> .
-*** con igualdad salvo fase global: no hay contraejemplos
+*** with equality up to global phase: no counterexamples
 search init =>! {(qstate: Q:Qubit) (isEnd: true) R:Comps}
   such that not eqUpToPhase(qubitAt(Q:Qubit, 1), a . |0> + b . |1>) .

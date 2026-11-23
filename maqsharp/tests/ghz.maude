@@ -25,7 +25,7 @@ mod GHZ is
   pr GHZ-PROG .
 endm
 
-*** estado justo antes de la primera medida
+*** state right before the first measurement
 search [1] run(prog, 'Main) =>* {(qstate: Q:Qubit) (k: (invoke('M(N:Value)) K:Stmts)) R:Comps} .
-*** resultados finales
+*** final results
 search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) R:Comps} .

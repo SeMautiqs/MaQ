@@ -16,7 +16,7 @@ namespace Functors {
         }
     }
 
-    // Adjoint deshace Prep: siempre Zero
+    // Adjoint undoes Prep: always Zero
     operation AdjointUndo() : Result {
         use q = Qubit();
         Prep(q);
@@ -24,7 +24,7 @@ namespace Functors {
         return M(q);
     }
 
-    // Adjoint de un cuerpo con bucle: todos vuelven a |0>
+    // Adjoint of a body with a loop: all qubits return to |0>
     operation AdjointLoop() : Bool {
         use qs = Qubit[2];
         Rot(qs);
@@ -32,7 +32,7 @@ namespace Functors {
         return M(qs[0]) == Zero and M(qs[1]) == Zero;
     }
 
-    // Controlled X equivale a CNOT: medidas correlacionadas
+    // Controlled X is CNOT: correlated measurements
     operation CtlX() : Bool {
         use c = Qubit();
         use t = Qubit();
@@ -43,7 +43,7 @@ namespace Functors {
         return same;
     }
 
-    // Toffoli con dos controles: siempre One
+    // Toffoli with two controls: always One
     operation Toffoli() : Result {
         use a = Qubit();
         use b = Qubit();
@@ -56,7 +56,7 @@ namespace Functors {
         return r;
     }
 
-    // Controlled de una operación de usuario
+    // Controlled applied to a user-defined operation
     operation CtlUser() : Bool {
         use c = Qubit();
         use t = Qubit();
@@ -67,7 +67,7 @@ namespace Functors {
         return same;
     }
 
-    // within/apply: H Z H = X, siempre One
+    // within/apply: H Z H = X, always One
     operation WithinApply() : Result {
         use q = Qubit();
         within { H(q); } apply { Z(q); }
@@ -76,7 +76,7 @@ namespace Functors {
         return r;
     }
 
-    // T^4 = Z, así que H T T T T H = X: siempre One
+    // T^4 = Z, hence H T T T T H = X: always One
     operation TPhase() : Result {
         use q = Qubit();
         H(q);
@@ -87,7 +87,7 @@ namespace Functors {
         return r;
     }
 
-    // Adjoint T deshace T y Adjoint S deshace S
+    // Adjoint T undoes T and Adjoint S undoes S
     operation TAdjoint() : Result {
         use q = Qubit();
         H(q);

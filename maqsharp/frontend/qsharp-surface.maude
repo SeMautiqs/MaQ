@@ -1,9 +1,9 @@
-*** Sintaxis de superficie de Q#, tal y como se escribe en un fichero .qs, y
-*** sintaxis de los comandos de la herramienta.
+*** Surface syntax of Q#, as written in a .qs file, and syntax of the
+*** tool commands.
 ***
-*** Como en MUnit: las firmas son módulos normales SIN hooks; los tokens y
-*** bubbles se añaden en un FModule construido a metanivel (QSHARP-GRAMMAR,
-*** COMMANDS-GRAMMAR), que es el único que se usa con metaParse.
+*** As in MUnit: signatures are plain modules WITHOUT hooks; tokens and
+*** bubbles are added in an FModule built at the metalevel (QSHARP-GRAMMAR,
+*** COMMANDS-GRAMMAR), which is the only one used with metaParse.
 
 fmod QSHARP-SURFACE-SIGN is
   sorts @Token@ @TokenList@ @Exp@ @Args@ @Block@ @Stmt@ @Stmts@ @Else@ @Alloc@
@@ -13,7 +13,7 @@ fmod QSHARP-SURFACE-SIGN is
   subsort @Param@ < @Params@ .
   subsort @Decl@ < @Decls@ .
 
-  *** expresiones; las llamadas admiten functores: Adjoint S(q), Controlled X([c], t)
+  *** expressions; calls admit functors: Adjoint S(q), Controlled X([c], t)
   sort @Callable@ .
   subsort @Token@ < @Callable@ .
   ops Adjoint_ Controlled_ : @Callable@ -> @Callable@ [prec 0] .
@@ -32,7 +32,7 @@ fmod QSHARP-SURFACE-SIGN is
   op _or_ : @Exp@ @Exp@ -> @Exp@ [prec 59 gather (E e)] .
   op _.._ : @Exp@ @Exp@ -> @Exp@ [prec 65] .
 
-  *** bloques y sentencias
+  *** blocks and statements
   op `{`} : -> @Block@ .
   op `{_`} : @Stmts@ -> @Block@ .
   op __ : @Stmts@ @Stmts@ -> @Stmts@ [assoc prec 80] .
@@ -54,7 +54,7 @@ fmod QSHARP-SURFACE-SIGN is
   op repeat_until_fixup_ : @Block@ @Exp@ @Block@ -> @Stmt@ .
   op within_apply_ : @Block@ @Block@ -> @Stmt@ .
 
-  *** tipos y parámetros
+  *** types and parameters
   ops Qubit Result Unit Int Bool Double : -> @Type@ .
   op _`[`] : @Type@ -> @Type@ .
   ops Adj Ctl : -> @Chars@ .
@@ -62,7 +62,7 @@ fmod QSHARP-SURFACE-SIGN is
   op _:_ : @Token@ @Type@ -> @Param@ [prec 20] .
   op _`,_ : @Params@ @Params@ -> @Params@ [assoc] .
 
-  *** declaraciones
+  *** declarations
   op operation_`(_`):__ : @Token@ @Params@ @Type@ @Block@ -> @Decl@ [prec 0] .
   op operation_`(`):__ : @Token@ @Type@ @Block@ -> @Decl@ [prec 0] .
   op operation_`(_`):_is__ : @Token@ @Params@ @Type@ @Chars@ @Block@ -> @Decl@ [prec 0] .
@@ -86,6 +86,8 @@ fmod QSHARP-COMMANDS-SIGN is
   ops run_`(_`)in_ runnp_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
   op check_ensures_ : @Token@ @Bubble@ -> @Command@ .
   op dist_ : @Token@ -> @Command@ .
+  op dist_depth_ : @Token@ @Token@ -> @Command@ .
+  op states_ : @Token@ -> @Command@ .
   op mc_satisfies_ : @Token@ @Bubble@ -> @Command@ .
   op mc_`(_`)in_satisfies_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
   op dist_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
@@ -104,7 +106,7 @@ fmod QSHARP-META-GRAMMARS is
   eq addImports(IL', fmod H is IL sorts SS . SSDS ODS MAS EqS endfm) =
                      fmod H is IL IL' sorts SS . SSDS ODS MAS EqS endfm .
 
-  *** palabras clave y símbolos que no pueden ser identificadores de Q#
+  *** keywords and symbols that cannot be Q# identifiers
   op keywords : -> QidList .
   eq keywords = 'operation 'function 'let 'mutable 'set 'use 'if 'elif 'else 'for 'in
                 'while 'repeat 'until 'fixup 'return 'namespace 'open 'import 'is

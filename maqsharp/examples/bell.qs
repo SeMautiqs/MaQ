@@ -1,7 +1,7 @@
 namespace Demo {
     import Std.Intrinsic.*;
 
-    // Par de Bell: las dos medidas coinciden siempre
+    // Bell pair: both measurements always agree
     @EntryPoint()
     operation Main() : Bool {
         use a = Qubit();

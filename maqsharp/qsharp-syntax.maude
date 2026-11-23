@@ -1,17 +1,17 @@
-*** Q# en Maude: sintaxis de un subconjunto pequeño, v0.1
+*** Q# in Maude: syntax of a small subset, v0.1
 ***
-*** Restricción de diseño: las llamadas a puertas, M u operaciones de usuario
-*** forman un tipo propio, Call, que NO es subtipo de Exp. Solo pueden
-*** aparecer en la raíz de una sentencia:
+*** Design restriction: calls to gates, M or user-defined operations form
+*** a sort of their own, Call, which is NOT a subsort of Exp. They can only
+*** appear at the root of a statement:
 ***     'H('q) ;   let 'r = 'M('q) ;   set 'r = 'Foo('q) ;   return 'Foo('q) ;
-*** Las expresiones Exp son siempre puras.
+*** Expressions (Exp) are always pure.
 ***
-*** Notación respecto a Q#:
-***   - identificadores como Qids: 'q, 'Main
-***   - comparaciones:  ==  !=  <  <=  >  >=   se escriben
-***                     eq  neq lt le  gt  ge
-***     porque los operadores de INT/RAT devuelven Bool y chocarían de kind
-***   - true y false son los booleanos de Q#, distintos de los Bool de Maude
+*** Notation with respect to Q#:
+***   - identifiers as Qids: 'q, 'Main
+***   - comparisons:  ==  !=  <  <=  >  >=   are written
+***                   eq  neq lt le  gt  ge
+***     because the INT/RAT operators return Bool and would clash at the kind level
+***   - true and false are the Q# Booleans, different from Maude's Bool
 
 fmod QSHARP-SYNTAX is
   pr INT .
@@ -21,12 +21,12 @@ fmod QSHARP-SYNTAX is
   subsorts Int QBool Result Unit < Value < Exp < ExpList .
   subsort Qid < Exp .
 
-  *** valores
+  *** values
   ops true false : -> QBool [ctor] .
   ops Zero One : -> Result [ctor] .
   op unit : -> Unit [ctor] .
 
-  *** expresiones puras
+  *** pure expressions
   op _+_ : Exp Exp -> Exp [ditto] .
   op _-_ : Exp Exp -> Exp [ditto] .
   op _*_ : Exp Exp -> Exp [ditto] .
@@ -42,24 +42,24 @@ fmod QSHARP-SYNTAX is
   op _`[_`] : Exp Exp -> Exp [prec 1] .
   op Length : Exp -> Exp .
 
-  *** listas de argumentos
+  *** argument lists
   op noE : -> ExpList [ctor] .
   op _,_ : ExpList ExpList -> ExpList [ctor assoc id: noE prec 61] .
 
-  *** llamadas a operaciones, intrínsecas o de usuario
+  *** calls to operations, intrinsic or user-defined
   sorts Callable Call .
   subsort Qid < Callable .
-  *** functores de Q#
+  *** Q# functors
   op Adjoint_ : Callable -> Callable [ctor prec 0] .
   op Controlled_ : Callable -> Callable [ctor prec 0] .
   op _`(_`) : Callable ExpList -> Call [ctor prec 1] .
   op _`(`) : Callable -> Call [prec 1] .
   eq Cl:Callable () = Cl:Callable(noE) .
-  *** normalización: Adjoint Adjoint C = C, y Controlled siempre por fuera
+  *** normalization: Adjoint Adjoint C = C, and Controlled always outermost
   eq Adjoint Adjoint Cl:Callable = Cl:Callable .
   eq Adjoint Controlled Cl:Callable = Controlled Adjoint Cl:Callable .
 
-  *** sentencias
+  *** statements
   sorts Stmt Stmts Alloc .
   subsort Stmt < Stmts .
   op skip : -> Stmts [ctor] .
@@ -92,7 +92,7 @@ fmod QSHARP-SYNTAX is
   eq set Q += E ; = set Q = Q + E ; .
   eq repeat { Ss } until E ; = repeat { Ss } until E fixup { skip } .
 
-  *** tipos: solo anotación; se asume que el programa compila en Q#
+  *** types: annotation only; the program is assumed to compile in Q#
   sorts Type Param Params .
   subsort Param < Params .
   ops Int Bool Result Unit Qubit Double : -> Type [ctor] .
@@ -101,7 +101,7 @@ fmod QSHARP-SYNTAX is
   op noP : -> Params [ctor] .
   op _,_ : Params Params -> Params [ctor assoc id: noP] .
 
-  *** declaraciones
+  *** declarations
   sorts Decl Decls .
   subsort Decl < Decls .
   op operation_`(_`):_{_} : Qid Params Type Stmts -> Decl [ctor] .

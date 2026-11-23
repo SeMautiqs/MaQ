@@ -1,6 +1,6 @@
 #!/bin/sh
-# Ejecuta todas las pruebas con las bindings de Python de Maude (pip install maude)
-# o con el binario maude si está en el PATH.
+# Runs all the tests with the Maude Python bindings (pip install maude)
+# or with the maude binary if it is in the PATH.
 cd "$(dirname "$0")"
 for f in parse bell teleport calls ghz loops; do
   echo "######## $f"

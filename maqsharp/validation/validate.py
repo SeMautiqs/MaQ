@@ -1,15 +1,15 @@
-"""Validación de la semántica Q#-en-Maude frente al simulador oficial de Q#.
+"""Validation of the Q#-in-Maude semantics against the official Q# simulator.
 
-Para cada operación:
-  - se ejecuta en el simulador de Q# (paquete qdk) N veces;
-  - se calcula en Maude su distribución EXACTA con el comando dist;
-  - para cada resultado se compara la frecuencia observada k/N con la
-    probabilidad p mediante z = (k - N p) / sqrt(N p (1 - p)).
-Un caso falla si algún |z| > 4, si aparece un resultado con p = 0 o si falta
-uno con p = 1.
+For each operation:
+  - it is run N times in the Q# simulator (qdk package);
+  - its EXACT distribution is computed in Maude with the dist command;
+  - for each result, the observed frequency k/N is compared with the
+    probability p by means of z = (k - N p) / sqrt(N p (1 - p)).
+A case fails if some |z| > 4, if a result with p = 0 shows up, or if one with
+p = 1 is missing.
 
-Uso:  python3 validation/validate.py [shots]
-Requiere el binario maude en el PATH y MAUDE_LIB apuntando a su preludio.
+Usage:  python3 validation/validate.py [shots]
+Requires the maude binary in the PATH and MAUDE_LIB pointing to its prelude.
 """
 import math, os, re, subprocess, sys, warnings
 from fractions import Fraction
@@ -21,7 +21,7 @@ from qdk import qsharp
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = int(sys.argv[1]) if len(sys.argv) > 1 else 4000
 
-# (fichero, prefijo de espacio de nombres para Q#, operaciones)
+# (file, namespace prefix for Q#, operations)
 CASES = [
     ("examples/bell.qs", "Demo.", ["Main"]),
     ("examples/ghz.qs", "", ["Main"]),
@@ -40,7 +40,7 @@ CASES = [
 
 
 def norm(v):
-    """Normaliza un valor de Maude o de Python a una cadena común."""
+    """Normalizes a Maude or Python value into a common string."""
     s = str(v).strip()
     s = {"(true ).QBool": "True", "(false ).QBool": "False", "unit": "()",
          "Result.One": "One", "Result.Zero": "Zero"}.get(s, s)
@@ -48,7 +48,7 @@ def norm(v):
 
 
 def num(expr):
-    """Evalúa numéricamente una probabilidad impresa por Maude."""
+    """Numerically evaluates a probability printed by Maude."""
     e = expr.replace(".+", "+").replace(".*", "*").replace("./", "/")
     e = e.replace("Sqrt", "math.sqrt")
     e = re.sub(r"(\d+)/(\d+)", r"(\1/\2)", e)
@@ -65,23 +65,23 @@ def maude_dists():
         ["maude", "-no-banner", "-no-advise", "-allow-files", "qsharp-io.maude"],
         input="\n".join(cmds) + "\n", capture_output=True, text=True, cwd=ROOT,
         timeout=1800).stdout
-    # cada respuesta va tras un prompt; se unen las líneas partidas por Maude
+    # each answer follows a prompt; lines split by Maude are joined
     blocks = out.split("Q#> ")[1:]
     res = []
     for b in blocks:
         b = re.sub(r"\n\s{4,}", " ", b)
-        if "resultado:" not in b:
+        if "result:" not in b:
             continue
         d, rest = {}, Fraction(0)
         for line in b.splitlines():
-            m = re.match(r"\s*resultado: (.*?)\s+prob: (.*)$", line)
+            m = re.match(r"\s*result: (.*?)\s+prob: (.*)$", line)
             if m:
                 d[norm(m.group(1))] = num(m.group(2))
-            m = re.match(r"\s*sin explorar.*: (.*)$", line)
+            m = re.match(r"\s*unexplored.*: (.*)$", line)
             if m:
                 rest = num(m.group(1))
-            if "bloqueados" in line:
-                d["<bloqueado>"] = num(line.split(":")[-1])
+            if "stuck" in line:
+                d["<stuck>"] = num(line.split(":")[-1])
         res.append((d, float(rest)))
     return res
 
@@ -99,7 +99,7 @@ def main():
             counts = {}
             for r in shots:
                 counts[norm(r)] = counts.get(norm(r), 0) + 1
-            worst, ok = 0.0, "<bloqueado>" not in exact
+            worst, ok = 0.0, "<stuck>" not in exact
             for v in set(exact) | set(counts):
                 p, k = exact.get(v, 0.0), counts.get(v, 0)
                 if p <= 1e-12 or p >= 1 - 1e-12:
@@ -116,11 +116,11 @@ def main():
             obs = ", ".join(f"{v}: {counts[v] / SHOTS:.4f}" for v in sorted(counts))
             rows.append((f"{os.path.basename(f)}:{op}", show, obs, worst, tv, rest, ok))
     w = max(len(r[0]) for r in rows)
-    print(f"{'caso':<{w}}  {'max|z|':>6}  {'TV':>6}  ok   Maude (exacta)  |  Q# ({SHOTS} ejecuciones)")
+    print(f"{'case':<{w}}  {'max|z|':>6}  {'TV':>6}  ok   Maude (exact)  |  Q# ({SHOTS} shots)")
     for name, show, obs, z, tv, rest, ok in rows:
-        extra = f" (+{rest:.1e} sin explorar)" if rest else ""
-        print(f"{name:<{w}}  {z:6.2f}  {tv:6.4f}  {'sí' if ok else 'NO':<3}  {show}{extra}  |  {obs}")
-    print("\nTODOS LOS CASOS CORRECTOS" if all_ok else "\nHAY DISCREPANCIAS")
+        extra = f" (+{rest:.1e} unexplored)" if rest else ""
+        print(f"{name:<{w}}  {z:6.2f}  {tv:6.4f}  {'yes' if ok else 'NO':<3}  {show}{extra}  |  {obs}")
+    print("\nALL CASES PASS" if all_ok else "\nTHERE ARE DISCREPANCIES")
     return 0 if all_ok else 1
 
 

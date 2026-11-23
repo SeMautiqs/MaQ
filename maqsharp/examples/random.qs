@@ -1,4 +1,4 @@
-// Número de unos en n bits aleatorios: distribución binomial
+// Number of ones in n random bits: binomial distribution
 operation RandomBit() : Result {
     use q = Qubit();
     H(q);

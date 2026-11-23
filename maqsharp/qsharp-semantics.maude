@@ -1,18 +1,18 @@
-*** Q# en Maude: semántica operacional del subconjunto v0.1
+*** Q# in Maude: operational semantics of the v0.1 subset
 ***
-*** Se apoya en la semántica simbólica de qubits de smc4qc:
-***   - estado cuántico: término de sort Qubit, p. ej. (q[0 1]: V) (q[2]: |0>)
-***   - puertas: _.H(_), _.CX(_,_), ... ; medida: _.M(P0/P1, N)
+*** It relies on the symbolic qubit semantics of smc4qc:
+***   - quantum state: term of sort Qubit, e.g. (q[0 1]: V) (q[2]: |0>)
+***   - gates: _.H(_), _.CX(_,_), ... ; measurement: _.M(P0/P1, N)
 ***
-*** Decisiones:
-***   - Puertas, medidas y Reset son REGLAS: cada paso cuántico es un estado
-***     observable. La medida ramifica en dos reglas, Zero y One, y se poda la
-***     rama de probabilidad 0. La probabilidad acumulada se guarda en prob:.
-***   - La parte clásica (entornos, control, llamadas) son ECUACIONES.
-***   - Q# no permite sombreado de variables, así que al cerrar un bloque basta
-***     restringir el entorno a las variables que existían al abrirlo.
-***   - Al cerrar el bloque de un use, el qubit se libera si está separado y
-***     en |0>; si no, se queda en el estado, cosa que en Q# sería un error.
+*** Design decisions:
+***   - Gates, measurements and Reset are RULES: each quantum step is an
+***     observable state. Measurement branches into two rules, Zero and One, and
+***     the branch with probability 0 is pruned. The accumulated probability is kept in prob:.
+***   - The classical part (environments, control, calls) is given by EQUATIONS.
+***   - Q# does not allow variable shadowing, so when a block is closed it is
+***     enough to restrict the environment to the variables that existed when it was opened.
+***   - When the block of a use is closed, the qubit is released if it is separated
+***     and in |0>; otherwise it stays in the state, which would be an error in Q#.
 
 in qsharp-syntax.maude
 in ../common/smc4qc-patch.maude
@@ -21,10 +21,10 @@ mod QSHARP-SEMANTICS is
   pr QSHARP-SYNTAX .
   pr SYMBOLIC-REASONING-PATCHED .
 
-  *** referencias a qubits como valores de Q#
+  *** qubit references as Q# values
   op qb : Nat -> Value [ctor] .
 
-  *** entornos
+  *** environments
   sorts Bind Env .
   subsort Bind < Env .
   op _|->_ : Qid Value -> Bind [ctor prec 40] .
@@ -46,7 +46,7 @@ mod QSHARP-SEMANTICS is
      if Q $in Old then (Q |-> V) & restrict(Env, Old) else restrict(Env, Old) fi .
   eq restrict(noEnv, Old) = noEnv .
 
-  *** evaluación de expresiones puras
+  *** evaluation of pure expressions
   op tb : Bool -> QBool .
   eq tb((true).Bool) = (true).QBool .
   eq tb((false).Bool) = (false).QBool .
@@ -81,7 +81,7 @@ mod QSHARP-SEMANTICS is
   eq ev(E1 and E2, Env) = ev(E1, Env) and ev(E2, Env) .
   eq ev(E1 or E2, Env) = ev(E1, Env) or ev(E2, Env) .
 
-  *** arrays: el valor es arr(lista de valores)
+  *** arrays: the value is arr(list of values)
   op arr : ExpList -> Value [ctor] .
   op nth : ExpList Nat -> Exp .
   op len : ExpList -> Nat .
@@ -102,13 +102,13 @@ mod QSHARP-SEMANTICS is
   op evC : Call Env -> Call .
   eq evC(Cl:Callable(EL), Env) = Cl:Callable(evL(EL, Env)) .
 
-  *** paso de parámetros
+  *** parameter passing
   op bindP : Params ExpList -> Env .
   var T : Type . var Ps : Params .
   eq bindP(noP, noE) = noEnv .
   eq bindP((Q : T, Ps), (V, EL)) = (Q |-> V) & bindP(Ps, EL) .
 
-  *** elementos internos de la continuación
+  *** internal items of the continuation
   op block : Stmts -> Stmt [ctor] .
   op restore : Env -> Stmt [ctor] .
   op frame : Env -> Stmt [ctor] .
@@ -123,7 +123,7 @@ mod QSHARP-SEMANTICS is
   op wloop : Exp Stmts Stmt -> Stmt [ctor] .
   op rptChk : Exp Stmts Stmt -> Stmt [ctor] .
 
-  *** configuración
+  *** configuration
   sorts Comp Comps Config .
   subsort Comp < Comps .
   op none : -> Comps [ctor] .
@@ -142,19 +142,19 @@ mod QSHARP-SEMANTICS is
   var C : Call . vars QS QS' : Qubit . var Pr : Complex . var Pr' : Real . var D : Decls .
   var B : Bool .
 
-  *** ejecutar un programa: operación de entrada sin argumentos
+  *** running a program: entry operation without arguments
   op run : Decls Qid -> Config .
   eq run(D, Q) = runWith(D, Q, noE, emp, 0) .
 
-  *** ejecutar una operación con argumentos, estado inicial y primer índice libre
+  *** running an operation with arguments, initial state and first free index
   op runWith : Decls Qid ExpList Qubit Nat -> Config .
   eq runWith(D, Q, EL, QS, N) =
      {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
       (next: N) (prob: 1) (result: unit) (isEnd: false)} .
 
-  *** Modo sin probabilidades: prob: queda fija en untracked. Con bucles
-  *** repeat-until la probabilidad acumulada haría infinito el espacio de
-  *** estados; en este modo el grafo es finito y sirve para model checking.
+  *** Mode without probabilities: prob: is fixed to untracked. With repeat-until
+  *** loops the accumulated probability would make the state space infinite;
+  *** in this mode the graph is finite and can be used for model checking.
   op untracked : -> Complex [ctor] .
   var Cx : Complex .
   eq untracked .* Cx = untracked .
@@ -165,7 +165,7 @@ mod QSHARP-SEMANTICS is
      {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
       (next: N) (prob: untracked) (result: unit) (isEnd: false)} .
 
-  *** ---------------- sentencias ----------------
+  *** ---------------- statements ----------------
   eq {(k: ((let Q = E ;) K)) (env: Env) R}
    = {(k: K) (env: ((Q |-> ev(E, Env)) & Env)) R} .
   eq {(k: ((mutable Q = E ;) K)) (env: Env) R}
@@ -173,7 +173,7 @@ mod QSHARP-SEMANTICS is
   eq {(k: ((set Q = E ;) K)) (env: Env) R}
    = {(k: K) (env: upd(Env, Q, ev(E, Env))) R} .
 
-  *** llamadas en la raíz de una sentencia
+  *** calls at the root of a statement
   eq {(k: ((let Q = C ;) K)) (env: Env) R}
    = {(k: (invoke(evC(C, Env)) letRes(Q) K)) (env: Env) R} .
   eq {(k: ((mutable Q = C ;) K)) (env: Env) R}
@@ -185,7 +185,7 @@ mod QSHARP-SEMANTICS is
   eq {(k: ((return C ;) K)) (env: Env) R}
    = {(k: (invoke(evC(C, Env)) retRes K)) (env: Env) R} .
 
-  *** recogida del valor devuelto por una llamada
+  *** collecting the value returned by a call
   eq {(k: (val(V) letRes(Q) K)) (env: Env) R} = {(k: K) (env: ((Q |-> V) & Env)) R} .
   eq {(k: (val(V) setRes(Q) K)) (env: Env) R} = {(k: K) (env: upd(Env, Q, V)) R} .
   eq {(k: (val(V) drop K)) R} = {(k: K) R} .
@@ -193,15 +193,15 @@ mod QSHARP-SEMANTICS is
   eq {(k: (val(V) outRes K)) (result: V') (isEnd: B) R}
    = {(k: K) (result: V) (isEnd: true) R} .
 
-  *** return: se descarta la continuación hasta el marco de la llamada,
-  *** ejecutando antes las liberaciones de qubits pendientes
+  *** return: the continuation is discarded up to the call frame, first
+  *** performing the pending qubit releases
   eq {(k: ((return E ;) frame(Old) K)) (env: Env) R}
    = {(k: (val(ev(E, Env)) K)) (env: Old) R} .
   eq {(k: ((return E ;) release(N) K)) R} = {(k: (release(N) (return E ;) K)) R} .
   eq {(k: ((return E ;) restore(Old) K)) R} = {(k: ((return E ;) K)) R} .
   eq {(k: ((return E ;) St K)) R} = {(k: ((return E ;) K)) R} [owise] .
 
-  *** fin del cuerpo sin return: se devuelve unit
+  *** end of the body without return: unit is returned
   eq {(k: (frame(Old) K)) (env: Env) R} = {(k: (val(unit) K)) (env: Old) R} .
 
   *** control
@@ -220,16 +220,16 @@ mod QSHARP-SEMANTICS is
   eq forArr(Q, arr((V, EL)), Ss) = block((let Q = V ;) Ss) forArr(Q, arr(EL), Ss) .
   eq forArr(Q, arr(noE), Ss) = skip .
 
-  *** while: una iteración cada vez, sin anidar bloques
+  *** while: one iteration at a time, without nesting blocks
   var W : Stmt .
   eq {(k: ((while E { Ss }) K)) (env: Env) R}
    = {(k: (wloop(ev(E, Env), Ss, (while E { Ss })) K)) (env: Env) R} .
   eq wloop((true).QBool, Ss, W) = block(Ss) W .
   eq wloop((false).QBool, Ss, W) = skip .
 
-  *** repeat-until-fixup: la condición y el fixup ven las variables del cuerpo.
-  *** Si la condición falla, se ejecuta el fixup y el repeat se vuelve a
-  *** colocar DESPUÉS del restore del bloque, así la continuación no crece.
+  *** repeat-until-fixup: the condition and the fixup see the body variables.
+  *** If the condition fails, the fixup is executed and the repeat is placed
+  *** again AFTER the restore of the block, so the continuation does not grow.
   eq {(k: ((repeat { Ss1 } until E fixup { Ss2 }) K)) (env: Env) R}
    = {(k: (Ss1 rptChk(E, Ss2, (repeat { Ss1 } until E fixup { Ss2 })) restore(Env) K))
       (env: Env) R} .
@@ -242,20 +242,20 @@ mod QSHARP-SEMANTICS is
   eq afterBlock(W, restore(Old) K) = restore(Old) W K .
   eq afterBlock(W, St K) = St afterBlock(W, K) [owise] .
 
-  *** bloques y ámbitos
+  *** blocks and scopes
   eq {(k: (block(Ss) K)) (env: Env) R} = {(k: (Ss restore(Env) K)) (env: Env) R} .
   eq {(k: (restore(Old) K)) (env: Env) R} = {(k: K) (env: restrict(Env, Old)) R} .
 
-  *** Fase global de un qubit separado: si un bloque de un solo qubit es
-  *** c . |k>, como los estados están normalizados |c| = 1 y c es una fase
-  *** global del estado completo, físicamente irrelevante. Se elimina. Sin
-  *** esto, tras medir un estado con fases de T, smc4qc deja c como una
-  *** expresión con raíces que no sabe reducir a módulo 1, y la siguiente
-  *** medida o Reset se bloquea.
+  *** Global phase of a separated qubit: if a single-qubit block is
+  *** c . |k>, since states are normalized |c| = 1 and c is a global
+  *** phase of the whole state, physically irrelevant. It is removed. Without
+  *** this, after measuring a state with T phases, smc4qc leaves c as an
+  *** expression with roots that it cannot reduce to modulus 1, and the next
+  *** measurement or Reset gets stuck.
   var Kt : Ket .
   eq (q[N]: (Cx . Kt)) = (q[N]: Kt) .
 
-  *** reserva y liberación de qubits
+  *** qubit allocation and release
   eq {(qstate: QS) (k: ((use Q = Qubit() ;) K)) (env: Env) (next: N) R}
    = {(qstate: (QS (q[N]: |0>))) (k: insRel(N, K)) (env: ((Q |-> qb(N)) & Env))
       (next: (N + 1)) R} .
@@ -282,8 +282,8 @@ mod QSHARP-SEMANTICS is
   eq insRel(N, skip) = release(N) .
   eq insRel(N, St K) = St insRel(N, K) [owise] .
 
-  *** al liberar, next pasa a ser el primer índice libre según los qubits vivos;
-  *** así los estados son canónicos y los bucles con use tienen grafo finito
+  *** on release, next becomes the first free index according to the live qubits;
+  *** this way states are canonical and loops with use have a finite graph
   eq {(qstate: ((q[N]: |0>) QS)) (k: (release(N) K)) (next: N1) R}
    = {(qstate: QS) (k: K) (next: nextFree(QS)) R} .
 
@@ -296,25 +296,25 @@ mod QSHARP-SEMANTICS is
   eq maxL(__(N, NL)) = max(N, maxL(NL)) .
   eq {(k: (release(N) K)) R} = {(k: K) R} [owise] .
 
-  *** llamadas a operaciones de usuario
+  *** calls to user-defined operations
   eq {(k: (invoke(Q(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
    = {(k: (Ss frame(Env) K)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
 
-  *** intrínsecas que se reducen a otras sentencias
+  *** intrinsics that reduce to other statements
   eq {(k: (invoke('ResetAll(arr((V, EL)))) K)) R}
    = {(k: (('Reset(V) ;) invoke('ResetAll(arr(EL))) K)) R} .
   eq {(k: (invoke('ResetAll(arr(noE))) K)) R} = {(k: (val(unit) K)) R} .
 
-  *** ---------------- functores y within/apply ----------------
+  *** ---------------- functors and within/apply ----------------
   var Cl : Callable . vars Cs Cs' Args : ExpList . var Ss3 : Stmts .
 
-  *** within { A } apply { B }  =  A ; B ; Adjoint A, cada uno en su ámbito
+  *** within { A } apply { B }  =  A ; B ; Adjoint A, each one in its own scope
   eq {(k: ((within { Ss1 } apply { Ss2 }) K)) R}
    = {(k: (block(Ss1) block(Ss2) block(adj(Ss1)) K)) R} .
 
-  *** adjunto de un cuerpo: orden inverso y cada llamada con Adjoint; las
-  *** ligaduras clásicas y las reservas iniciales se mantienen delante
+  *** adjoint of a body: reverse order and each call with Adjoint; classical
+  *** bindings and initial allocations are kept in front
   op adj : Stmts -> Stmts .
   op adjS : Stmt -> Stmt .
   eq adj(skip) = skip .
@@ -329,7 +329,7 @@ mod QSHARP-SEMANTICS is
   eq adjS(within { Ss1 } apply { Ss2 }) = within { Ss1 } apply { adj(Ss2) } .
   eq adjS(St) = St [owise] .
 
-  *** bucles descendentes, para el adjunto de un for
+  *** descending loops, for the adjoint of a for
   op forDown : Qid Exp Exp Stmts -> Stmt [ctor] .
   op forArrDown : Qid Exp Stmts -> Stmt [ctor] .
   op forIterDown : Qid Int Int Stmts -> Stmt [ctor] .
@@ -345,7 +345,7 @@ mod QSHARP-SEMANTICS is
   eq revL(noE) = noE .
   eq revL((E, EL)) = revL(EL), E .
 
-  *** versión controlada de un cuerpo: cada llamada recibe los controles
+  *** controlled version of a body: each call receives the controls
   op ctl : Stmts ExpList -> Stmts .
   op ctlS : Stmt ExpList -> Stmt .
   eq ctl(skip, Cs) = skip .
@@ -360,7 +360,7 @@ mod QSHARP-SEMANTICS is
   eq ctlS(within { Ss1 } apply { Ss2 }, Cs) = within { Ss1 } apply { ctl(Ss2, Cs) } .
   eq ctlS(St, Cs) = St [owise] .
 
-  *** invocación de operaciones de usuario con functores
+  *** invocation of user-defined operations with functors
   eq {(k: (invoke((Adjoint Q)(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
    = {(k: (adj(Ss) frame(Env) K)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
@@ -373,13 +373,13 @@ mod QSHARP-SEMANTICS is
    = {(k: (ctl(adj(Ss), Cs) frame(Env) K)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
 
-  *** Controlled anidado: se juntan las listas de controles
+  *** nested Controlled: the control lists are joined
   eq invoke((Controlled Controlled Cl)(arr(Cs), arr(Cs'), EL))
    = invoke((Controlled Cl)(arr((Cs, Cs')), EL)) .
-  *** sin controles, la operación original
+  *** without controls, the original operation
   eq invoke((Controlled Cl)(arr(noE), EL)) = invoke(Cl(EL)) .
 
-  *** intrínsecas: adjuntos
+  *** intrinsics: adjoints
   op selfAdj : Qid -> Bool .
   eq selfAdj(Q) = Q == 'I or Q == 'X or Q == 'Y or Q == 'Z or Q == 'H or Q == 'CNOT
                or Q == 'CY or Q == 'CZ or Q == 'SWAP or Q == 'CCNOT .
@@ -392,7 +392,7 @@ mod QSHARP-SEMANTICS is
   eq invoke((Controlled Adjoint 'S)(EL)) = invoke((Controlled 'Sdg)(EL)) .
   eq invoke((Controlled Adjoint 'T)(EL)) = invoke((Controlled 'Tdg)(EL)) .
 
-  *** intrínsecas de dos o tres qubits bajo Controlled: más controles sobre X, Y o Z
+  *** two- and three-qubit intrinsics under Controlled: more controls on X, Y or Z
   vars Wa Wb Wc : Value .
   eq invoke((Controlled 'CNOT)(arr(Cs), Wa, Wb)) = invoke((Controlled 'X)(arr((Cs, Wa)), Wb)) .
   eq invoke((Controlled 'CY)(arr(Cs), Wa, Wb)) = invoke((Controlled 'Y)(arr((Cs, Wa)), Wb)) .
@@ -404,14 +404,14 @@ mod QSHARP-SEMANTICS is
    = {(k: (((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) ((Controlled 'CNOT)(arr(Cs), Wb, Wa) ;)
            ((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) val(unit) K)) R} .
 
-  *** ---------------- aplicador genérico de puertas controladas ----------------
-  *** U de un qubit sobre el objetivo T con controles Cs (todos en |1>):
+  *** ---------------- generic applier of controlled gates ----------------
+  *** Single-qubit U on target T with controls Cs (all in |1>):
   ***   G(c Cs) = P0_c (x) I  +  P1_c (x) G(Cs),   G(nil) = U_T
-  *** donde P0 = B0 y P1 = B3, como hace smc4qc con CX = B0 (x) I + B3 (x) X.
-  *** Primero se juntan en un bloque todos los qubits implicados.
+  *** where P0 = B0 and P1 = B3, as smc4qc does with CX = B0 (x) I + B3 (x) X.
+  *** First, all the qubits involved are joined into one block.
   op Sdg : -> Matrix .
   op Tdg : -> Matrix .
-  op Tg : -> Matrix .   *** T corregida: la de smc4qc usa 1 + i en vez de 1 .+ i
+  op Tg : -> Matrix .   *** fixed T: smc4qc's uses 1 + i instead of 1 .+ i
   eq Sdg = B0 + ((-1) .* i) . B3 .
   eq Tg = B0 + ((1 .+ i) ./ Sqrt(2)) . B3 .
   eq Tdg = B0 + ((1 .+ ((-1) .* i)) ./ Sqrt(2)) . B3 .
@@ -470,7 +470,7 @@ mod QSHARP-SEMANTICS is
   eq idxs(noE) = nil .
   eq idxs((qb(N), EL)) = __(N, idxs(EL)) .
 
-  *** reglas: puertas de un qubit (T, Sdg, Tdg) y versiones controladas
+  *** rules: single-qubit gates (T, Sdg, Tdg) and controlled versions
   rl [T] : {(qstate: QS) (k: (invoke('T(qb(N))) K)) R}
         => {(qstate: applyU(QS, nil, N, Tg)) (k: (val(unit) K)) R} .
   rl [Sdg] : {(qstate: QS) (k: (invoke('Sdg(qb(N))) K)) R}
@@ -481,7 +481,7 @@ mod QSHARP-SEMANTICS is
                   => {(qstate: applyU(QS, idxs(Cs), N, U)) (k: (val(unit) K)) R}
                   if Cs =/= noE /\ U := gateMat(Q) .
 
-  *** ---------------- intrínsecas cuánticas: reglas ----------------
+  *** ---------------- quantum intrinsics: rules ----------------
   rl [I] : {(k: (invoke('I(qb(N))) K)) R} => {(k: (val(unit) K)) R} .
   rl [X] : {(qstate: QS) (k: (invoke('X(qb(N))) K)) R}
         => {(qstate: ((QS).X(N))) (k: (val(unit) K)) R} .
@@ -504,7 +504,7 @@ mod QSHARP-SEMANTICS is
   rl [CCNOT] : {(qstate: QS) (k: (invoke('CCNOT(qb(N1), qb(N2), qb(N3))) K)) R}
             => {(qstate: ((QS).CCX(N1, N2, N3))) (k: (val(unit) K)) R} .
 
-  *** medida en base computacional
+  *** measurement in the computational basis
   crl [M-Zero] : {(qstate: QS) (k: (invoke('M(qb(N))) K)) (prob: Pr) R}
               => {(qstate: QS') (k: (val(Zero) K)) (prob: (Pr .* Pr')) R}
               if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .
@@ -512,7 +512,7 @@ mod QSHARP-SEMANTICS is
              => {(qstate: QS') (k: (val(One) K)) (prob: (Pr .* Pr')) R}
              if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
 
-  *** Reset: medir y, si sale One, aplicar X
+  *** Reset: measure and, if the result is One, apply X
   crl [Reset-Zero] : {(qstate: QS) (k: (invoke('Reset(qb(N))) K)) (prob: Pr) R}
                   => {(qstate: QS') (k: (val(unit) K)) (prob: (Pr .* Pr')) R}
                   if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .

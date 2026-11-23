@@ -1,6 +1,6 @@
 in ../qsharp-semantics.maude
 
-*** el programa solo ve la sintaxis
+*** the program only sees the syntax
 mod BELL-PROG is
   pr QSHARP-SYNTAX .
   op prog : -> Decls .

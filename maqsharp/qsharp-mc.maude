@@ -1,17 +1,17 @@
-*** Model checking LTL de programas Q#.
+*** LTL model checking of Q# programs.
 ***
-*** Va en un módulo aparte porque añade la regla de stutter en los estados
-*** finales, que el model checker necesita (no admite bloqueos). La herramienta
-*** une este módulo con el de trabajo a metanivel, y dist sigue usando el
-*** módulo sin stutter.
+*** It lives in a separate module because it adds the stutter rule on final
+*** states, which the model checker needs (it does not accept deadlocks). The tool
+*** joins this module with the working one at the metalevel, and dist keeps using
+*** the module without stutter.
 ***
-*** Proposiciones atómicas:
-***   ended            el programa ha terminado
-***   returns(V)       ha terminado devolviendo V
-***   qubit(N, V)      el qubit N está separado y en el estado V
-***   qubitPh(N, V)    igual, salvo fase global (±1, ±i)
-***   entangled(N)     el qubit N está en un bloque de más de un qubit
-***   liveLE(K)        hay como mucho K qubits vivos
+*** Atomic propositions:
+***   ended            the program has terminated
+***   returns(V)       it has terminated returning V
+***   qubit(N, V)      qubit N is separated and in state V
+***   qubitPh(N, V)    same, up to global phase (±1, ±i)
+***   entangled(N)     qubit N is in a block of more than one qubit
+***   liveLE(K)        there are at most K live qubits
 
 sload qsharp-props.maude
 sload model-checker.maude

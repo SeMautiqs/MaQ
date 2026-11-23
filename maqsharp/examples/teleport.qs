@@ -1,5 +1,5 @@
 namespace Demo {
-    // Teletransporte: el estado de msg pasa a target
+    // Teleportation: the state of msg is transferred to target
     operation Teleport(msg : Qubit, target : Qubit) : Unit {
         use register = Qubit();
         H(register);

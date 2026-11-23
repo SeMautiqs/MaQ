@@ -1,17 +1,17 @@
-*** Parche mínimo sobre smc4qc, sin modificar sus ficheros.
+*** Minimal patch on top of smc4qc, without modifying its files.
 ***
-*** Al medir y separar todos los qubits de un bloque entrelazado,
-*** rmQubitAt* devuelve la matriz nil y queda el término mal tipado
+*** When every qubit of an entangled block is measured and separated,
+*** rmQubitAt* returns the nil matrix, leaving the ill-sorted term
 ***   q[nil]: nil
-*** dentro de simplifyOne*, que entonces no reduce. Ese bloque vacío es emp.
+*** inside simplifyOne*, which then does not reduce. That empty block is emp.
 ***
-*** Además, falta el conjugado de i: (i)^* no reduce, y sin él no se
-*** simplifican S† ni T†.
+*** Moreover, the conjugate of i is missing: (i)^* does not reduce, and without
+*** it neither S† nor T† simplifies.
 ***
-*** Y las operaciones aritméticas solo se declaran sobre Complex, así que una
-*** probabilidad como 1/2 .+ -1/2 .* 1 ./ Sqrt(2) nunca tiene sort Real y la
-*** medida, que exige Prob : Real, se bloquea en cuanto aparece una raíz
-*** por ejemplo tras H T H. Se añaden sobrecargas por subsort sobre Real.
+*** Finally, arithmetic operations are only declared on Complex, so a
+*** probability such as 1/2 .+ -1/2 .* 1 ./ Sqrt(2) never has sort Real and
+*** measurement, which requires Prob : Real, gets stuck as soon as a square
+*** root appears, e.g. after H T H. We add subsort overloads on Real.
 
 in smc4qc/symbolic-reasoning.maude
 

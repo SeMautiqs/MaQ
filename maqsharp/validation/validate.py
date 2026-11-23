@@ -33,6 +33,9 @@ CASES = [
     ("validation/validation.qs", "Validation.",
      ["Biased", "Biased3", "TwoQubitPhase", "ControlledPhase", "TeleportCheck",
       "FirstAttempt"]),
+    ("validation/algorithms.qs", "Algorithms.",
+     ["DJConstant", "DJBalanced", "BernsteinVazirani", "Grover2", "Grover3",
+      "SuperdenseAll", "EntanglementSwapping"]),
 ]
 
 

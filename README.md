@@ -74,7 +74,8 @@ python3 validation/validate.py      # comparison with the Microsoft QDK simulato
 ```
 
 The validation runs each operation on the QDK simulator and compares the observed frequencies with the exact
-distribution computed by MaQ#. All 19 operations currently agree.
+distribution computed by MaQ#. All 26 operations currently agree, including Deutsch–Jozsa,
+Bernstein–Vazirani, Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 
 A detailed design note (in Spanish) is in `maqsharp/DESIGN.es.md`.
 

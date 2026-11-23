@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .DS_Store
 maqsharp/tmp*.qs
+maqsharp/perf/results.csv
+maqsharp/perf/results.md

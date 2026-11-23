@@ -9,7 +9,7 @@ Usage:  python3 perf/run_perf.py [limit_in_seconds] [max_n]
 Writes perf/results.csv and perf/results.md.
 """
 from fractions import Fraction
-import csv, math, os, re, subprocess, sys, tempfile, time
+import csv, math, os, re, resource, subprocess, sys, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIMIT = float(sys.argv[1]) if len(sys.argv) > 1 else 120.0
@@ -64,13 +64,20 @@ ANALYSES = {
 }
 
 
+def unlimited_stack():
+    # dist on large programs recurses deeply: raise the stack limit as far as allowed
+    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    resource.setrlimit(resource.RLIMIT_STACK, (hard, hard))
+
+
 def run_maude(qs_file, command):
     cmds = f"open {qs_file}\n" + (command + "\n" if command else "") + "q\n"
     t0 = time.monotonic()
     try:
         out = subprocess.run(
             ["maude", "-no-banner", "-no-advise", "-allow-files", "qsharp-io.maude"],
-            input=cmds, capture_output=True, text=True, cwd=ROOT, timeout=LIMIT).stdout
+            input=cmds, capture_output=True, text=True, cwd=ROOT, timeout=LIMIT,
+            preexec_fn=unlimited_stack).stdout
     except subprocess.TimeoutExpired:
         return None
     wall = time.monotonic() - t0
@@ -86,7 +93,7 @@ def summary(analysis, out):
         return "holds" if "  holds" in out else "does not hold"
     # long fractions may be split across several lines
     body = re.sub(r"\s+", " ", out)
-    found = re.findall(r"result: (\S+) prob: ([\d/ ]+?)(?= result:| unexplored| in stuck| Q#>)", body)
+    found = re.findall(r"result: (.+?) prob: ([\d/ ]+?)(?= result:| unexplored| in stuck| Q#>)", body)
     if not found:
         return "?"
     probs = [(r, Fraction(p.replace(" ", ""))) for r, p in found]
@@ -116,6 +123,11 @@ def main():
                         print(f"{fam}({n}) {an}: timeout", flush=True)
                         continue
                     wall, rw, out = r
+                    if "rewrites:" not in out:  # Maude aborted (e.g. stack overflow)
+                        rows.append((fam, n, an, "error", "", ""))
+                        alive.discard(an)
+                        print(f"{fam}({n}) {an}: error (Maude aborted)", flush=True)
+                        continue
                     t = max(0.0, wall - base[0])
                     rows.append((fam, n, an, f"{t:.2f}", rw - base[1], summary(an, out)))
                     print(f"{fam}({n}) {an}: {t:.2f}s {rw - base[1]} rewrites  {summary(an, out)}",

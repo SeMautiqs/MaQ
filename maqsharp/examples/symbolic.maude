@@ -5,8 +5,6 @@ sload ../qsharp-props.maude
 
 mod SYMBOLIC is
   pr QSHARP-PROPS .
-  var C : Complex .
-  ops a b : -> Complex .
-  eq Pow(Abs(a), 2) .+ Pow(Abs(b), 2) = 1 .
-  eq C .* Pow(Abs(a), 2) .+ C .* Pow(Abs(b), 2) = C .
+  ops a b : -> NzCpx .
+  eq a * a ^* + b * b ^* = (1,0,0,0) .
 endm

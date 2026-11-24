@@ -30,4 +30,4 @@ mod CALLS is
   pr CALLS-PROG .
 endm
 
-search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) (env: E:Env) (next: N:Nat) R:Comps} .
+search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Prob) (qstate: Q:Qubit) (env: E:Env) (next: N:Nat) R:Comps} .

@@ -10,7 +10,6 @@ Program loaded. Operations: Main
 Program loaded. Operations: Teleport
   result: unit   prob: 1/4   qubits: (q [0 ]: |0> )q [1 ]: a . |0> + b . |1>
   result: unit   prob: 1/4   qubits: (q [0 ]: |1> )q [1 ]: a . |0> + b . |1>
-  result: unit   prob: 1/4   qubits: (q [0 ]: |1> )q [1 ]: (a .* -1 ). |0> + (b
   holds in all final states
   result: unit   prob: 1
   holds

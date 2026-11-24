@@ -126,7 +126,7 @@ fmod QSHARP-PROCESSING is
   *** final state pattern
   op finalPat : -> Term .
   eq finalPat = '`{_`}['__['qstate:_['QS:Qubit], 'result:_['RES:Value],
-                           'prob:_['PR:Complex], 'isEnd:_['true.Bool], 'R:Comps]] .
+                           'prob:_['PR:Prob], 'isEnd:_['true.Bool], 'R:Comps]] .
 
   *** enumerate final solutions
   op solutions : Module Term Bool Nat Nat -> String .
@@ -150,7 +150,7 @@ fmod QSHARP-PROCESSING is
   eq $solutions(M, T, B:Bool, s I, MAX, failure) = "" .
   eq $solutions(M, T, B:Bool, I, MAX, {T', Ty, S}) =
      "  result: " + pp(M, val(S, 'RES:Value))
-     + (if B:Bool then "   prob: " + pp(M, val(S, 'PR:Complex)) else "" fi)
+     + (if B:Bool then "   prob: " + pp(M, val(S, 'PR:Prob)) else "" fi)
      + "   qubits: " + pp(M, val(S, 'QS:Qubit)) + "\n"
      + solutions(M, T, B:Bool, s I, MAX) .
 

@@ -21,17 +21,15 @@ endm
 mod TELEPORT is
   pr QSHARP-PROPS .
   pr TELEPORT-PROG .
-  var C : Complex .
-  ops a b : -> Complex .
-  eq Pow(Abs(a), 2) .+ Pow(Abs(b), 2) = 1 .
-  eq C .* Pow(Abs(a), 2) .+ C .* Pow(Abs(b), 2) = C .
+  ops a b : -> NzCpx .
+  eq a * a ^* + b * b ^* = (1,0,0,0) .
   op init : -> Config .
   eq init = runWith(prog, 'Teleport, (qb(0), qb(1)),
                     (q[0]: a . |0> + b . |1>) (q[1]: |0>), 2) .
 endm
 
 *** final states
-search init =>! {(qstate: Q:Qubit) (prob: P:Complex) (isEnd: true) R:Comps} .
+search init =>! {(qstate: Q:Qubit) (prob: P:Prob) (isEnd: true) R:Comps} .
 *** counterexample: is there a final state where qubit 1 does not hold the original state?
 search init =>! {(qstate: Q:Qubit) (isEnd: true) R:Comps}
   such that qubitAt(Q:Qubit, 1) =/= a . |0> + b . |1> .

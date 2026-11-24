@@ -55,7 +55,7 @@ def norm(v):
 def num(expr):
     """Numerically evaluates a probability printed by Maude."""
     e = expr.replace(".+", "+").replace(".*", "*").replace("./", "/")
-    e = e.replace("Sqrt", "math.sqrt")
+    e = e.replace("*Sqrt2", "*math.sqrt(2)").replace("Sqrt", "math.sqrt")
     e = re.sub(r"(\d+)/(\d+)", r"(\1/\2)", e)
     return float(eval(e, {"math": math}))
 

@@ -1,0 +1,406 @@
+*** Exact quantum states for MaQ#, built on the complex numbers of AS4QC.
+***
+*** Amplitudes live in the ring Z[w], w = e^{i pi/4}, as the 4-tuples
+*** tuples (a,b,c,d) = a + b w + c w^2 + d w^3 of AS4QC (module CPX), possibly
+*** multiplied by symbolic constants declared by the user as NzCpx.
+***
+*** States are projective: a block (q[NL]: V) stands for V / ||V||, so the
+*** factors 1/Sqrt(2) of H and the renormalization after a measurement are
+*** never computed. Each block is kept in a canonical form:
+***   - common factors 2 and Sqrt(2) are divided out,
+***   - the global phase is fixed by a power of w,
+***   - qubits that are in a basis state are split into their own block.
+*** Probabilities are exact elements of Q(Sqrt(2)), computed as
+*** <PV, PV> / <V, V>.
+
+in ../common/as4qc/cpx.maude
+
+*** ---------------- symbolic polynomials over Z[w] ----------------
+fmod MAQ-AMP is
+  pr CPX .
+
+  vars X Y Z : Cpx . var C : NzCpx .
+  vars I1 I2 I3 I4 J1 J2 J3 J4 : Int .
+
+  *** named constants
+  ops i w r2 : -> NzCpx .
+  eq i = (0,0,1,0) .
+  eq w = (0,1,0,0) .
+  eq r2 = (0,1,0,-1) .     *** Sqrt(2) = w - w^3
+
+  *** ring normalization of symbolic expressions
+  eq X * (Y + Z) = (X * Y) + (X * Z) .
+  eq X + (0,0,0,0) = X .
+  eq X * (0,0,0,0) = (0,0,0,0) .
+  eq ((I1,I2,I3,I4) * C) + ((J1,J2,J3,J4) * C) = ((I1,I2,I3,I4) + (J1,J2,J3,J4)) * C .
+  eq ((I1,I2,I3,I4) * C) + C = ((I1,I2,I3,I4) + (1,0,0,0)) * C .
+  eq C + C = (2,0,0,0) * C .
+  eq (X + Y) ^* = (X ^*) + (Y ^*) .
+  eq (X * Y) ^* = (X ^*) * (Y ^*) .
+  eq X ^* ^* = X .
+  op -_ : Cpx -> Cpx .
+  eq - X = (-1,0,0,0) * X .
+
+  *** tuples of a polynomial: the coefficients of its monomials
+  op isTuple : Cpx -> Bool .
+  eq isTuple((I1,I2,I3,I4)) = true .
+  eq isTuple(X) = false [owise] .
+endfm
+
+*** ---------------- exact probabilities in Q(Sqrt(2)) ----------------
+fmod MAQ-PROB is
+  pr MAQ-AMP .
+  sort Prob .
+  subsort Rat < Prob .
+  op _+_*Sqrt2 : Rat NzRat -> Prob [ctor prec 33] .
+  op untracked : -> Prob [ctor] .
+
+  vars R S R' S' : Rat . vars P Q : Prob .
+  vars I1 I2 I3 I4 : Int .
+
+  op q2 : Rat Rat -> Prob .
+  eq q2(R, 0) = R .
+  ceq q2(R, S) = R + S *Sqrt2 if S =/= 0 .
+  op re : Prob -> Rat .
+  op sq : Prob -> Rat .
+  eq re(R) = R .               eq sq(R) = 0 .
+  eq re(R + S *Sqrt2) = R .    eq sq(R + S *Sqrt2) = S .
+
+  op _.+_ : Prob Prob -> Prob [assoc comm prec 33] .
+  op _.*_ : Prob Prob -> Prob [assoc comm prec 31] .
+  eq untracked .* P = untracked .
+  eq untracked .+ P = untracked .
+  eq P .+ Q = q2(re(P) + re(Q), sq(P) + sq(Q)) [owise] .
+  eq P .* Q = q2(re(P) * re(Q) + 2 * sq(P) * sq(Q), re(P) * sq(Q) + sq(P) * re(Q)) [owise] .
+
+  *** quotient p / q, with q =/= 0
+  op _./_ : Prob Prob -> Prob .
+  var D : Rat .
+  ceq P ./ Q = P .* q2(re(Q) / D, (- sq(Q)) / D)
+   if D := (re(Q) * re(Q)) - (2 * (sq(Q) * sq(Q))) .
+
+  *** a real element a + b Sqrt(2) of Z[w], (a, b, 0, -b), as a probability
+  op toQ2 : Cpx ~> Prob .
+  ceq toQ2((I1,I2,0,I4)) = q2(I1, I2) if I2 == - I4 .
+endfm
+
+*** ---------------- states ----------------
+fmod MAQ-STATE is
+  pr MAQ-PROB .
+  pr NAT-LIST .
+
+  sorts Bit Ket Vector Qubit Gate Proj StateProb .
+  subsort Bit < Ket < Vector .
+  ops |0> |1> : -> Bit [ctor] .
+  op eps : -> Ket [ctor] .
+  op __ : Ket Ket -> Ket [ctor assoc id: eps prec 15] .
+  op _._ : Cpx Ket -> Vector [ctor prec 20] .
+  op _+_ : Vector Vector -> Vector [ctor assoc comm prec 33] .
+  op zeroV : -> Vector [ctor] .
+  op entangled : -> Vector [ctor] .
+
+  op emp : -> Qubit [ctor] .
+  op (q[_]:_) : NatList Vector -> Qubit [ctor] .
+  op __ : Qubit Qubit -> Qubit [ctor assoc comm id: emp] .
+
+  vars X Y : Cpx . var C : NzCpx .
+  vars K K' K1 K2 : Ket . vars B B' : Bit .
+  vars V V' W W1 W2 : Vector . vars QS QS' : Qubit .
+  vars N N1 N2 M : Nat . vars NL NL' NL1 NL2 CsN : NatList .
+  vars I1 I2 I3 I4 J1 J2 J3 J4 : Int . var G : Int .
+  vars P P' : Prob .
+
+  *** vectors: like terms are collected and zero terms removed
+  eq (X . K) + (Y . K) = (X + Y) . K .
+  eq K + (Y . K) = ((1,0,0,0) + Y) . K .
+  eq K + K = (2,0,0,0) . K .
+  eq (0,0,0,0) . K = zeroV .
+  eq (1,0,0,0) . K = K .     *** a coefficient 1 is not written
+  eq V + zeroV = V .
+
+  *** explicit form: every term with its coefficient
+  op expl : Vector -> Vector .
+  eq expl(K) = (1,0,0,0) . K .
+  eq expl(X . K) = X . K .
+  eq expl(zeroV) = zeroV .
+  eq expl(V + W) = expl(V) + expl(W) .
+
+  *** ---------- bits of a ket, by qubit index ----------
+  op bitAt : NatList Ket Nat ~> Bit .
+  eq bitAt(N1 NL, B K, N) = if N1 == N then B else bitAt(NL, K, N) fi .
+  op setBit : NatList Ket Nat Bit -> Ket .
+  eq setBit(N1 NL, B' K, N, B) = if N1 == N then B K else B' setBit(NL, K, N, B) fi .
+  eq setBit(nil, eps, N, B) = eps .
+  op dropBit : NatList Ket Nat -> Ket .
+  eq dropBit(N1 NL, B K, N) = if N1 == N then K else B dropBit(NL, K, N) fi .
+  eq dropBit(nil, eps, N) = eps .
+  op dropN : NatList Nat -> NatList .
+  eq dropN(N1 NL, N) = if N1 == N then NL else N1 dropN(NL, N) fi .
+  eq dropN(nil, N) = nil .
+  op allOnes : NatList Ket NatList -> Bool .
+  eq allOnes(NL, K, nil) = true .
+  eq allOnes(NL, K, N CsN) = bitAt(NL, K, N) == |1> and allOnes(NL, K, CsN) .
+
+  *** ---------- norms ----------
+  op norm2 : Vector -> Cpx .
+  eq norm2(zeroV) = (0,0,0,0) .
+  eq norm2(K) = (1,0,0,0) .
+  eq norm2(X . K) = X * (X ^*) .
+  eq norm2(V + W) = norm2(V) + norm2(W) .
+
+  *** ---------- canonical form ----------
+  *** coefficients of all the monomials of the amplitudes, as a Cpx sum
+  op tuplesOk : Vector -> Bool .   *** every monomial carries a tuple
+  op tupOk : Cpx -> Bool .
+  eq tuplesOk(zeroV) = true .
+  eq tuplesOk(K) = false .
+  eq tuplesOk(X . K) = tupOk(X) .
+  eq tuplesOk(V + W) = tuplesOk(V) and tuplesOk(W) .
+  eq tupOk((I1,I2,I3,I4)) = true .
+  eq tupOk((I1,I2,I3,I4) * C) = true .
+  eq tupOk(X + Y) = tupOk(X) and tupOk(Y) .
+  eq tupOk(X) = false [owise] .
+
+  *** gcd of all the integers
+  op gcdV : Vector -> Nat .
+  op gcdC : Cpx -> Nat .
+  eq gcdV(zeroV) = 0 .
+  eq gcdV(K) = 1 .
+  eq gcdV(X . K) = gcdC(X) .
+  eq gcdV(V + W) = gcd(gcdV(V), gcdV(W)) .
+  eq gcdC((I1,I2,I3,I4)) = gcd(gcd(I1, I2), gcd(I3, I4)) .
+  eq gcdC((I1,I2,I3,I4) * C) = gcdC((I1,I2,I3,I4)) .
+  eq gcdC(X + Y) = gcd(gcdC(X), gcdC(Y)) .
+
+  op divV : Vector Nat -> Vector .
+  op divC : Cpx Nat -> Cpx .
+  eq divV(zeroV, N) = zeroV .
+  eq divV(X . K, N) = divC(X, N) . K .
+  eq divV(V + W, N) = divV(V, N) + divV(W, N) .
+  eq divC((I1,I2,I3,I4), N) = (I1 quo N, I2 quo N, I3 quo N, I4 quo N) .
+  eq divC((I1,I2,I3,I4) * C, N) = divC((I1,I2,I3,I4), N) * C .
+  eq divC(X + Y, N) = divC(X, N) + divC(Y, N) .
+
+  *** divisibility by Sqrt(2): Sqrt(2) (a,b,c,d) = (b-d, a+c, b+d, c-a)
+  op r2V : Vector -> Bool .
+  op r2C : Cpx -> Bool .
+  eq r2V(zeroV) = true .
+  eq r2V(K) = false .
+  eq r2V(X . K) = r2C(X) .
+  eq r2V(V + W) = r2V(V) and r2V(W) .
+  eq r2C((I1,I2,I3,I4)) = _rem_(_-_(I2, I4), 2) == 0 and _rem_(_+_(I1, I3), 2) == 0 .
+  eq r2C((I1,I2,I3,I4) * C) = r2C((I1,I2,I3,I4)) .
+  eq r2C(X + Y) = r2C(X) and r2C(Y) .
+  op dr2V : Vector -> Vector .
+  op dr2C : Cpx -> Cpx .
+  eq dr2V(zeroV) = zeroV .
+  eq dr2V(X . K) = dr2C(X) . K .
+  eq dr2V(V + W) = dr2V(V) + dr2V(W) .
+  eq dr2C((I1,I2,I3,I4)) = (_quo_(_-_(I2, I4), 2), _quo_(_+_(I1, I3), 2), _quo_(_+_(I2, I4), 2), _quo_(_-_(I3, I1), 2)) .
+  eq dr2C((I1,I2,I3,I4) * C) = dr2C((I1,I2,I3,I4)) * C .
+  eq dr2C(X + Y) = dr2C(X) + dr2C(Y) .
+
+  op scale : Vector -> Vector .
+  ceq scale(V) = scale(divV(V, G)) if tuplesOk(V) /\ G := gcdV(V) /\ G > 1 .
+  ceq scale(V) = scale(dr2V(V)) if tuplesOk(V) /\ gcdV(V) == 1 /\ r2V(V) .
+  eq scale(V) = V [owise] .
+
+  *** global phase: the coefficient of the smallest ket, if concrete, is
+  *** rotated by the power of w that makes it lexicographically largest
+  op _<k_ : Ket Ket -> Bool .
+  eq eps <k K = K =/= eps .
+  eq (B K1) <k (B' K2) = (B == |0> and B' == |1>) or (B == B' and K1 <k K2) .
+  eq K <k eps = false .
+  op minKet : Vector -> Ket .
+  eq minKet(X . K) = K .
+  eq minKet(K) = K .
+  eq minKet((X . K) + V) = minK(K, minKet(V)) .
+  eq minKet(K + V) = minK(K, minKet(V)) .
+  op minK : Ket Ket -> Ket .
+  eq minK(K1, K2) = if K1 <k K2 then K1 else K2 fi .
+  op coef : Vector Ket -> Cpx .
+  eq coef(zeroV, K) = (0,0,0,0) .
+  eq coef(K, K) = (1,0,0,0) .
+  eq coef(X . K, K) = X .
+  eq coef((X . K) + V, K) = X .
+  eq coef(K + V, K) = (1,0,0,0) .
+  eq coef(V, K) = (0,0,0,0) [owise] .
+
+  op rotW : Cpx -> Cpx .       *** multiplication by w
+  eq rotW((I1,I2,I3,I4)) = (- I4, I1, I2, I3) .
+  op _>t_ : Cpx Cpx -> Bool .
+  eq (I1,I2,I3,I4) >t (J1,J2,J3,J4) =
+     I1 > J1 or (I1 == J1 and (I2 > J2 or (I2 == J2 and (I3 > J3 or (I3 == J3 and I4 > J4))))) .
+  op bestRot : Cpx Cpx Nat Nat Nat -> Nat .   *** current, best, its k, k, steps left
+  eq bestRot(X, Y, M, N, 0) = M .
+  eq bestRot(X, Y, M, N, s N1) =
+     if rotW(X) >t Y then bestRot(rotW(X), rotW(X), s N, s N, N1)
+     else bestRot(rotW(X), Y, M, s N, N1) fi .
+  op wPow : Nat -> Cpx .
+  eq wPow(0) = (1,0,0,0) .
+  eq wPow(s N) = w * wPow(N) .
+  op mulV : Cpx Vector -> Vector .
+  eq mulV(X, zeroV) = zeroV .
+  eq mulV(X, Y . K) = (X * Y) . K .
+  eq mulV(X, K) = X . K .
+  eq mulV(X, V + W) = mulV(X, V) + mulV(X, W) .
+
+  *** the tuple that multiplies a monomial (1 if none); sums have no lead
+  op lead : Cpx ~> Cpx .
+  eq lead((I1,I2,I3,I4)) = (I1,I2,I3,I4) .
+  eq lead((I1,I2,I3,I4) * C) = (I1,I2,I3,I4) .
+  eq lead(C) = (1,0,0,0) [owise] .
+  op phase : Vector -> Vector .
+  ceq phase(V) = mulV(wPow(bestRot(Y, Y, 0, 0, 7)), V)
+   if Y := lead(coef(V, minKet(V))) .
+  eq phase(V) = V [owise] .
+
+  *** splitting qubits in a basis state
+  *** the bit of qubit N if it is the same in every term (linear in the terms)
+  sort Bit? .
+  subsort Bit < Bit? .
+  op mixed : -> Bit? [ctor] .
+  op meet : Bit? Bit? -> Bit? .
+  eq meet(B, B) = B .
+  eq meet(B?:Bit?, B?':Bit?) = mixed [owise] .
+  op constBit : NatList Vector Nat -> Bit? .
+  eq constBit(NL, K, N) = bitAt(NL, K, N) .
+  eq constBit(NL, X . K, N) = bitAt(NL, K, N) .
+  eq constBit(NL, K + V, N) = meet(bitAt(NL, K, N), constBit(NL, V, N)) .
+  eq constBit(NL, (X . K) + V, N) = meet(bitAt(NL, K, N), constBit(NL, V, N)) .
+  op dropV : NatList Vector Nat -> Vector .
+  eq dropV(NL, zeroV, N) = zeroV .
+  eq dropV(NL, K, N) = dropBit(NL, K, N) .
+  eq dropV(NL, X . K, N) = X . dropBit(NL, K, N) .
+  eq dropV(NL, V + W, N) = dropV(NL, V, N) + dropV(NL, W, N) .
+
+  op split : NatList NatList Vector -> Qubit .   *** indices to try, block, vector
+  eq split(nil, NL, V) = (q[NL]: V) .
+  ceq split(N NL', NL, V) = (q[N]: B) canon(dropN(NL, N), dropV(NL, V, N))
+   if NL =/= N /\ B := constBit(NL, V, N) .
+  eq split(N NL', NL, V) = split(NL', NL, V) [owise] .
+
+  *** canonical form of a block
+  op canon : NatList Vector -> Qubit .
+  eq canon(NL, zeroV) = emp .
+  eq canon(N, K) = (q[N]: K) .
+  eq canon(N, X . K) = (q[N]: K) .
+  eq canon(NL, V) = split(NL, NL, phase(scale(expl(V)))) [owise] .
+  *** a single term is a product of basis states
+  eq split(NL', NL, X . K) = split(NL', NL, K) .
+
+  *** ---------- joining blocks ----------
+  op tensor : Vector Vector -> Vector .
+  eq tensor(zeroV, W) = zeroV .
+  eq tensor(V, zeroV) = zeroV .
+  eq tensor(V + V', W) = tensor(V, W) + tensor(V', W) .
+  eq tensor(V, W1 + W2) = tensor(V, W1) + tensor(V, W2) .
+  eq tensor(K1, K2) = K1 K2 .
+  eq tensor(X . K1, K2) = X . (K1 K2) .
+  eq tensor(K1, Y . K2) = Y . (K1 K2) .
+  eq tensor(X . K1, Y . K2) = (X * Y) . (K1 K2) .
+
+  op hits : NatList NatList -> Bool .
+  eq hits(nil, CsN) = false .
+  eq hits(N NL, CsN) = occurs(N, CsN) or hits(NL, CsN) .
+
+  op mergeQ : Qubit NatList -> Qubit .
+  ceq mergeQ((q[NL1]: W1) (q[NL2]: W2) QS, CsN) = mergeQ((q[NL1 NL2]: tensor(W1, W2)) QS, CsN)
+   if hits(NL1, CsN) /\ hits(NL2, CsN) .
+  eq mergeQ(QS, CsN) = QS [owise] .
+
+  *** ---------- gates ----------
+  *** g(m00, m01, m10, m11, s) is the matrix M / Sqrt(2)^s; s is needed so that
+  *** the identity branch of a controlled gate gets the same scale
+  op g : Cpx Cpx Cpx Cpx Nat -> Gate [ctor] .
+  ops gI gX gY gZ gH gS gT gSdg gTdg : -> Gate .
+  eq gI = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (1,0,0,0), 0) .
+  eq gX = g((0,0,0,0), (1,0,0,0), (1,0,0,0), (0,0,0,0), 0) .
+  eq gY = g((0,0,0,0), (0,0,-1,0), (0,0,1,0), (0,0,0,0), 0) .
+  eq gZ = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (-1,0,0,0), 0) .
+  eq gH = g((1,0,0,0), (1,0,0,0), (1,0,0,0), (-1,0,0,0), 1) .
+  eq gS = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (0,0,1,0), 0) .
+  eq gT = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (0,1,0,0), 0) .
+  eq gSdg = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (0,0,-1,0), 0) .
+  eq gTdg = g((1,0,0,0), (0,0,0,0), (0,0,0,0), (0,0,0,-1), 0) .
+
+  vars A00 A01 A10 A11 : Cpx .
+  op ent : Gate Bit Bit -> Cpx .
+  eq ent(g(A00, A01, A10, A11, N), |0>, |0>) = A00 .
+  eq ent(g(A00, A01, A10, A11, N), |0>, |1>) = A01 .
+  eq ent(g(A00, A01, A10, A11, N), |1>, |0>) = A10 .
+  eq ent(g(A00, A01, A10, A11, N), |1>, |1>) = A11 .
+  op scl : Gate -> Cpx .
+  eq scl(g(A00, A01, A10, A11, 0)) = (1,0,0,0) .
+  eq scl(g(A00, A01, A10, A11, 1)) = r2 .
+
+  op gv : NatList NatList Nat Gate Vector -> Vector .
+  eq gv(NL, CsN, N, G:Gate, zeroV) = zeroV .
+  eq gv(NL, CsN, N, G:Gate, V + W) = gv(NL, CsN, N, G:Gate, V) + gv(NL, CsN, N, G:Gate, W) .
+  eq gv(NL, CsN, N, G:Gate, K) = gvT(NL, CsN, N, G:Gate, (1,0,0,0), K) .
+  eq gv(NL, CsN, N, G:Gate, X . K) = gvT(NL, CsN, N, G:Gate, X, K) .
+  op gvT : NatList NatList Nat Gate Cpx Ket -> Vector .
+  eq gvT(NL, CsN, N, G:Gate, X, K) =
+     if allOnes(NL, K, CsN)
+     then ((X * ent(G:Gate, |0>, bitAt(NL, K, N))) . setBit(NL, K, N, |0>))
+        + ((X * ent(G:Gate, |1>, bitAt(NL, K, N))) . setBit(NL, K, N, |1>))
+     else (X * scl(G:Gate)) . K fi .
+
+  *** U on target N with controls CsN (all in |1>)
+  op applyU : Qubit NatList Nat Gate -> Qubit .
+  eq applyU(QS, CsN, N, G:Gate) = $applyU(mergeQ(QS, CsN N), CsN, N, G:Gate) .
+  op $applyU : Qubit NatList Nat Gate -> Qubit .
+  ceq $applyU((q[NL]: V) QS, CsN, N, G:Gate) = canon(NL, gv(NL, CsN, N, G:Gate, expl(V))) QS
+   if occurs(N, NL) .
+
+  *** the usual intrinsics
+  op _.X(_) : Qubit Nat -> Qubit .      eq (QS).X(N) = applyU(QS, nil, N, gX) .
+  op _.Y(_) : Qubit Nat -> Qubit .      eq (QS).Y(N) = applyU(QS, nil, N, gY) .
+  op _.Z(_) : Qubit Nat -> Qubit .      eq (QS).Z(N) = applyU(QS, nil, N, gZ) .
+  op _.H(_) : Qubit Nat -> Qubit .      eq (QS).H(N) = applyU(QS, nil, N, gH) .
+  op _.S(_) : Qubit Nat -> Qubit .      eq (QS).S(N) = applyU(QS, nil, N, gS) .
+  op _.CX(_,_) : Qubit Nat Nat -> Qubit .  eq (QS).CX(N1, N2) = applyU(QS, N1, N2, gX) .
+  op _.CY(_,_) : Qubit Nat Nat -> Qubit .  eq (QS).CY(N1, N2) = applyU(QS, N1, N2, gY) .
+  op _.CZ(_,_) : Qubit Nat Nat -> Qubit .  eq (QS).CZ(N1, N2) = applyU(QS, N1, N2, gZ) .
+  op _.SWAP(_,_) : Qubit Nat Nat -> Qubit .
+  eq (QS).SWAP(N1, N2) = (((QS).CX(N1, N2)).CX(N2, N1)).CX(N1, N2) .
+  op _.CCX(_,_,_) : Qubit Nat Nat Nat -> Qubit .
+  eq (QS).CCX(N1, N2, M) = applyU(QS, N1 N2, M, gX) .
+
+  *** ---------- measurement ----------
+  ops P0 P1 : -> Proj [ctor] .
+  op bitOf : Proj -> Bit .
+  eq bitOf(P0) = |0> .  eq bitOf(P1) = |1> .
+  op {qstate:_, prob:_} : Qubit Prob -> StateProb [ctor] .
+
+  op keep : NatList Vector Nat Bit -> Vector .
+  eq keep(NL, zeroV, N, B) = zeroV .
+  eq keep(NL, K, N, B) = if bitAt(NL, K, N) == B then K else zeroV fi .
+  eq keep(NL, X . K, N, B) = if bitAt(NL, K, N) == B then X . K else zeroV fi .
+  eq keep(NL, V + W, N, B) = keep(NL, V, N, B) + keep(NL, W, N, B) .
+
+  var Pj : Proj .
+  op _.M(_,_) : Qubit Proj Nat -> StateProb .
+  ceq ((q[NL]: V) QS).M(Pj, N) =
+      if W == zeroV then {qstate: (q[NL]: V) QS, prob: 0}
+      else {qstate: canon(NL, W) QS, prob: toQ2(norm2(W)) ./ toQ2(norm2(expl(V)))} fi
+   if occurs(N, NL) /\ W := keep(NL, expl(V), N, bitOf(Pj)) .
+
+  *** ---------- observations ----------
+  op qubitAt : Qubit Nat -> Vector .
+  eq qubitAt((q[N]: V) QS, N) = V .
+  ceq qubitAt((q[NL]: V) QS, N) = entangled if occurs(N, NL) /\ NL =/= N .
+
+  *** equality up to a global factor: V and W are proportional
+  op eqUpToPhase : Vector Vector -> Bool .
+  op $prop : Vector Vector Ket Vector -> Bool .
+  ceq eqUpToPhase(V, W) = $prop(expl(V), expl(W), K, expl(V) + expl(W))
+   if V =/= entangled /\ W =/= entangled /\ K := minKet(V) .
+  eq eqUpToPhase(V, W) = false [owise] .
+  eq $prop(V, W, K, zeroV) = coef(W, K) =/= (0,0,0,0) .
+  eq $prop(V, W, K, W1 + W2) = $prop(V, W, K, W1) and $prop(V, W, K, W2) .
+  eq $prop(V, W, K, X . K1) = $prop(V, W, K, K1) .
+  eq $prop(V, W, K, K1) =
+     (coef(V, K1) * coef(W, K)) + (- (coef(V, K) * coef(W, K1))) == (0,0,0,0)
+     and coef(W, K) =/= (0,0,0,0) .
+endfm

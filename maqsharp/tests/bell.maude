@@ -24,4 +24,4 @@ mod BELL is
 endm
 
 rew run(prog, 'Main) .
-search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Complex) (qstate: Q:Qubit) R:Comps} .
+search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Prob) (qstate: Q:Qubit) R:Comps} .

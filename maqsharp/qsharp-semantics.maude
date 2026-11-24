@@ -1,8 +1,9 @@
 *** Q# in Maude: operational semantics of the v0.1 subset
 ***
-*** It relies on the symbolic qubit semantics of smc4qc:
+*** It relies on the exact quantum states of qsharp-state.maude, built on the
+*** complex numbers of AS4QC:
 ***   - quantum state: term of sort Qubit, e.g. (q[0 1]: V) (q[2]: |0>)
-***   - gates: _.H(_), _.CX(_,_), ... ; measurement: _.M(P0/P1, N)
+***   - gates: _.H(_), _.CX(_,_), applyU ; measurement: _.M(P0/P1, N)
 ***
 *** Design decisions:
 ***   - Gates, measurements and Reset are RULES: each quantum step is an
@@ -16,11 +17,11 @@
 ***     and in |0>; otherwise it stays in the state, which would be an error in Q#.
 
 in qsharp-syntax.maude
-in ../common/smc4qc/symbolic-reasoning.maude
+in qsharp-state.maude
 
 mod QSHARP-SEMANTICS is
   pr QSHARP-SYNTAX .
-  pr SYMBOLIC-REASONING .
+  pr MAQ-STATE .
 
   *** qubit references as Q# values
   op qb : Nat -> Value [ctor] .
@@ -190,13 +191,13 @@ mod QSHARP-SEMANTICS is
   op env:_ : Env -> Comp [ctor] .
   op decls:_ : Decls -> Comp [ctor] .
   op next:_ : Nat -> Comp [ctor] .
-  op prob:_ : Complex -> Comp [ctor] .
+  op prob:_ : Prob -> Comp [ctor] .
   op result:_ : Value -> Comp [ctor] .
   op isEnd:_ : Bool -> Comp [ctor] .
   op {_} : Comps -> Config [ctor] .
 
   vars K : Stmts . vars Ss Ss1 Ss2 : Stmts . var St : Stmt . var R : Comps .
-  var C : Call . vars QS QS' : Qubit . var Pr : Complex . var Pr' : Real . var D : Decls .
+  var C : Call . vars QS QS' : Qubit . vars Pr Pr' : Prob . var D : Decls .
   var B : Bool .
 
   *** running a program: entry operation without arguments
@@ -212,9 +213,6 @@ mod QSHARP-SEMANTICS is
   *** Mode without probabilities: prob: is fixed to untracked. With repeat-until
   *** loops the accumulated probability would make the state space infinite;
   *** in this mode the graph is finite and can be used for model checking.
-  op untracked : -> Complex [ctor] .
-  var Cx : Complex .
-  eq untracked .* Cx = untracked .
   op runNP : Decls Qid -> Config .
   op runWithNP : Decls Qid ExpList Qubit Nat -> Config .
   eq runNP(D, Q) = runWithNP(D, Q, noE, emp, 0) .
@@ -302,15 +300,6 @@ mod QSHARP-SEMANTICS is
   *** blocks and scopes
   eq {(k: (block(Ss) K)) (env: Env) R} = {(k: (Ss restore(Env) K)) (env: Env) R} .
   eq {(k: (restore(Old) K)) (env: Env) R} = {(k: K) (env: restrict(Env, Old)) R} .
-
-  *** Global phase of a separated qubit: if a single-qubit block is
-  *** c . |k>, since states are normalized |c| = 1 and c is a global
-  *** phase of the whole state, physically irrelevant. It is removed. Without
-  *** this, after measuring a state with T phases, smc4qc leaves c as an
-  *** expression with roots that it cannot reduce to modulus 1, and the next
-  *** measurement or Reset gets stuck.
-  var Kt : Ket .
-  eq (q[N]: (Cx . Kt)) = (q[N]: Kt) .
 
   *** qubit allocation and release
   eq {(qstate: QS) (k: ((use Q = Qubit() ;) K)) (env: Env) (next: N) R}
@@ -466,62 +455,14 @@ mod QSHARP-SEMANTICS is
   *** ---------------- generic applier of controlled gates ----------------
   *** Single-qubit U on target T with controls Cs (all in |1>):
   ***   G(c Cs) = P0_c (x) I  +  P1_c (x) G(Cs),   G(nil) = U_T
-  *** where P0 = B0 and P1 = B3, as smc4qc does with CX = B0 (x) I + B3 (x) X.
-  *** First, all the qubits involved are joined into one block.
-  op Sdg : -> Matrix .
-  op Tdg : -> Matrix .
-  eq Sdg = B0 + ((-1) .* i) . B3 .
-  eq Tdg = B0 + ((1 .+ ((-1) .* i)) ./ Sqrt(2)) . B3 .
+  *** This is applyU in qsharp-state.maude; first, all the qubits involved are
+  *** joined into one block.
+  op gateMat : Qid ~> Gate .
+  eq gateMat('I) = gI .   eq gateMat('X) = gX .   eq gateMat('Y) = gY .
+  eq gateMat('Z) = gZ .   eq gateMat('H) = gH .   eq gateMat('S) = gS .
+  eq gateMat('T) = gT .   eq gateMat('Sdg) = gSdg . eq gateMat('Tdg) = gTdg .
 
-  op gateMat : Qid ~> Matrix .
-  eq gateMat('I) = I .   eq gateMat('X) = X .   eq gateMat('Y) = Y .
-  eq gateMat('Z) = Z .   eq gateMat('H) = H .   eq gateMat('S) = S .
-  eq gateMat('T) = T .  eq gateMat('Sdg) = Sdg . eq gateMat('Tdg) = Tdg .
-
-  sort MList .
-  subsort Matrix < MList .
-  op nilM : -> MList [ctor] .
-  op _;;_ : MList MList -> MList [ctor assoc id: nilM] .
-
-  vars NL1 NL2 CsN : NatList . vars Mx U : Matrix . var ML : MList .
-  vars V1 V2 : Vector .
-
-  op idsFor : NatList -> MList .
-  eq idsFor(nil) = nilM .
-  eq idsFor(__(N, NL)) = I ;; idsFor(NL) .
-  eq idsFor(N) = I .
-
-  op setAt : NatList MList Nat Matrix -> MList .
-  eq setAt(__(N, NL), Mx ;; ML, N, U) = U ;; ML .
-  eq setAt(N, Mx, N, U) = U .
-  eq setAt(__(N1, NL), Mx ;; ML, N, U) = Mx ;; setAt(NL, ML, N, U) [owise] .
-
-  op tens : MList -> Matrix .
-  eq tens(Mx) = Mx .
-  eq tens(Mx ;; ML) = Mx (x) tens(ML) [owise] .
-
-  op gTerms : NatList NatList MList Nat Matrix -> Matrix .
-  eq gTerms(NL, nil, ML, N, U) = tens(setAt(NL, ML, N, U)) .
-  eq gTerms(NL, N1, ML, N, U) =
-     tens(setAt(NL, ML, N1, B0)) + gTerms(NL, nil, setAt(NL, ML, N1, B3), N, U) .
-  eq gTerms(NL, __(N1, CsN), ML, N, U) =
-     tens(setAt(NL, ML, N1, B0)) + gTerms(NL, CsN, setAt(NL, ML, N1, B3), N, U) .
-
-  op hits : NatList NatList -> Bool .
-  eq hits(nil, CsN) = false .
-  eq hits(N, CsN) = occurs(N, CsN) .
-  eq hits(__(N, NL), CsN) = occurs(N, CsN) or hits(NL, CsN) .
-
-  op mergeQ : Qubit NatList -> Qubit .
-  ceq mergeQ((q[NL1]: V1) (q[NL2]: V2) QS, CsN) = mergeQ((q[__(NL1, NL2)]: (V1 (x) V2)) QS, CsN)
-   if hits(NL1, CsN) /\ hits(NL2, CsN) .
-  eq mergeQ(QS, CsN) = QS [owise] .
-
-  op applyU : Qubit NatList Nat Matrix -> Qubit .
-  eq applyU(QS, CsN, N, U) = $applyU(mergeQ(QS, __(CsN, N)), CsN, N, U) .
-  op $applyU : Qubit NatList Nat Matrix -> Qubit .
-  ceq $applyU((q[NL]: V1) QS, CsN, N, U) = simplify(q[NL]: (gTerms(NL, CsN, idsFor(NL), N, U) x V1)) QS
-   if occurs(N, NL) .
+  vars U : Gate .
 
   op idxs : ExpList -> NatList .
   eq idxs(noE) = nil .
@@ -529,11 +470,11 @@ mod QSHARP-SEMANTICS is
 
   *** rules: single-qubit gates (T, Sdg, Tdg) and controlled versions
   rl [T] : {(qstate: QS) (k: (invoke('T(qb(N))) K)) R}
-        => {(qstate: applyU(QS, nil, N, T)) (k: (val(unit) K)) R} .
+        => {(qstate: applyU(QS, nil, N, gT)) (k: (val(unit) K)) R} .
   rl [Sdg] : {(qstate: QS) (k: (invoke('Sdg(qb(N))) K)) R}
-          => {(qstate: applyU(QS, nil, N, Sdg)) (k: (val(unit) K)) R} .
+          => {(qstate: applyU(QS, nil, N, gSdg)) (k: (val(unit) K)) R} .
   rl [Tdg] : {(qstate: QS) (k: (invoke('Tdg(qb(N))) K)) R}
-          => {(qstate: applyU(QS, nil, N, Tdg)) (k: (val(unit) K)) R} .
+          => {(qstate: applyU(QS, nil, N, gTdg)) (k: (val(unit) K)) R} .
   crl [Controlled] : {(qstate: QS) (k: (invoke((Controlled Q)(arr(Cs), qb(N))) K)) R}
                   => {(qstate: applyU(QS, idxs(Cs), N, U)) (k: (val(unit) K)) R}
                   if Cs =/= noE /\ U := gateMat(Q) .

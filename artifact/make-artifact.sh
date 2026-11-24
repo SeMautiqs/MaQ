@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds the artifact archive to be uploaded to Zenodo.
 # Requires git, docker, zip and network access (only while building).
+# The image is x86-64; on Apple Silicon it is built and tested under emulation.
 # Usage, from anywhere: artifact/make-artifact.sh [output_dir]
 # Produces <output_dir>/maqsharp-artifact.zip and its SHA256 checksum.
 set -e
@@ -17,10 +18,10 @@ fi
 git submodule update --init
 
 echo "== building the Docker image $TAG"
-docker build -f artifact/Dockerfile -t "$TAG" .
+docker build --platform linux/amd64 -f artifact/Dockerfile -t "$TAG" .
 
 echo "== smoke test inside the image, without network"
-docker run --rm --network none "$TAG" ../artifact/smoke-test.sh
+docker run --rm --platform linux/amd64 --network none "$TAG" ../artifact/smoke-test.sh
 
 echo "== assembling $OUT/$NAME"
 rm -rf "${OUT:?}/$NAME" "$OUT/$NAME.zip" "$OUT/$NAME.zip.sha256"
@@ -31,5 +32,6 @@ docker save "$TAG" | gzip > "$OUT/$NAME/maqsharp-image.tar.gz"
 cp artifact/README.md "$OUT/$NAME/README.md"
 cp artifact/License.txt "$OUT/$NAME/License.txt"
 
-(cd "$OUT" && zip -qr "$NAME.zip" "$NAME" && sha256sum "$NAME.zip" | tee "$NAME.zip.sha256")
+if command -v sha256sum >/dev/null; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
+(cd "$OUT" && zip -qr "$NAME.zip" "$NAME" && $SHA "$NAME.zip" | tee "$NAME.zip.sha256")
 echo "Upload $OUT/$NAME.zip to Zenodo and put its DOI and the checksum above in the submission."

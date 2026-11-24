@@ -8,9 +8,8 @@ MaQ# (everything under MaQ/ except MaQ/common/smc4qc)
   MIT License, Copyright (c) 2026 Adrián Riesco. See MaQ/LICENSE.
 
 smc4qc (MaQ/common/smc4qc), by Canh Minh Do
-  https://github.com/canhminhdo/smc4qc, release v1.0.2.
-  TODO before uploading: license or written permission from the author for its
-  redistribution in this archive.
+  https://github.com/canhminhdo/smc4qc, commit 56d5bcc.
+  MIT License, Copyright (c) Canh Minh Do. See MaQ/common/smc4qc/LICENSE.
 
 Maude 3.5.1 (installed in the Docker image under /opt/maude)
   GNU General Public License, version 2. Source code:
@@ -18,5 +17,9 @@ Maude 3.5.1 (installed in the Docker image under /opt/maude)
 
 Microsoft Quantum Development Kit, Python package qdk 1.34.0 (installed in the image)
   MIT License. https://github.com/microsoft/qsharp
+
+Q# samples and Quantum Katas (installed in the image under /opt/qsharp)
+  From https://github.com/microsoft/qsharp, commit 0e58afc2fbb3fb8db806412b045acc0c675f8ce3.
+  MIT License, Copyright (c) Microsoft Corporation.
 
 Ubuntu 25.04 base image and its packages: their respective licenses.

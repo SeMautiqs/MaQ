@@ -4,3 +4,6 @@ __pycache__/
 maqsharp/tmp*.qs
 maqsharp/perf/results.csv
 maqsharp/perf/results.md
+dist/
+results/
+maqsharp/perf/qrat-results.md

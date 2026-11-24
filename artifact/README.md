@@ -1,4 +1,6 @@
-# Artifact for "MaQ#: Executing and Verifying Q# Programs in Rewriting Logic" (SPIN 2027)
+# Artifact for "MaQ#: Executing and Verifying Q# Programs in Maude" (SPIN 2027)
+
+DOI: [10.5281/zenodo.24466579](https://doi.org/10.5281/zenodo.24466579)
 
 This artifact contains MaQ#, an executable semantics of a subset of Q# in Maude, together
 with an interactive tool that reads Q# files and supports execution, exact outcome
@@ -13,8 +15,9 @@ measurements (RQ4) reported in the paper.
 | `maqsharp-image.tar.gz` | Docker image with Maude 3.5.1, the Python package `qdk` and the sources |
 | `MaQ/` | Sources (the same as in the image and at https://github.com/ariesco/MaQ) |
 | `MaQ/maqsharp/` | MaQ#: syntax, semantics, front end, tool, examples, tests, validation and performance scripts |
-| `MaQ/common/` | smc4qc (symbolic qubit semantics by Canh Minh Do) and a patch module on top of it |
+| `MaQ/common/` | smc4qc (symbolic qubit semantics by Canh Minh Do) |
 | `MaQ/artifact/` | Dockerfile and the scripts below |
+| `/opt/qsharp` (in the image) | Samples and Quantum Katas of the Q# repository (commit `0e58afc`), used in RQ2 |
 | `License.txt` | Licenses of all components |
 
 ## Requirements
@@ -48,7 +51,7 @@ It runs the object-level tests (`tests/run-all.sh`) and a session of the interac
 SMOKE TEST PASSED
 ```
 
-## Full reproduction (about 1 hour)
+## Full reproduction (about 1 hour 15 minutes)
 
 Inside the container:
 
@@ -60,7 +63,10 @@ or each part separately:
 
 | Claim in the paper | Command | Time |
 |---|---|---|
-| RQ1: the exact distributions computed by MaQ# agree with the Q# simulator on all 26 operations (TODO: table number) | `python3 validation/validate.py 4000` | < 1 min |
+| RQ1: the exact distributions computed by MaQ# agree with the Q# simulator on all 35 operations (Table 5, App. B) | `python3 validation/validate.py 4000` | < 1 min |
+| RQ2: 30 of the 72 official Q# samples run; 26 of them are compared with the simulator and agree | `python3 validation/samples.py /opt/qsharp` | ~5 min |
+| RQ2: 66 of the 79 testable Quantum Katas exercises agree with the simulator | `python3 validation/katas.py /opt/qsharp/katas/content 1000` | ~10 min |
+| RQ3: the five seeded faults of Table 3 are detected | `maude -no-banner -allow-files examples/symbolic.maude qsharp-io.maude < validation/faults.txt` | < 1 min |
 | RQ4: scalability on GHZ(n) and Grover(n) (TODO: table and figure numbers) | `python3 perf/run_perf.py 120 16` | ~1 h |
 | Examples of Sect. 4 (Bell, teleportation with symbolic amplitudes, RUS, functors) | `./tests/run-tool.sh` | < 1 min |
 

@@ -9,17 +9,18 @@
 ***     observable state. Measurement branches into two rules, Zero and One, and
 ***     the branch with probability 0 is pruned. The accumulated probability is kept in prob:.
 ***   - The classical part (environments, control, calls) is given by EQUATIONS.
-***   - Q# does not allow variable shadowing, so when a block is closed it is
-***     enough to restrict the environment to the variables that existed when it was opened.
+***   - Q# allows variable shadowing, so environments are stacks of bindings: a
+***     declaration pushes a binding, lookups and set use the innermost one, and
+***     closing a block pops the bindings pushed since it was opened.
 ***   - When the block of a use is closed, the qubit is released if it is separated
 ***     and in |0>; otherwise it stays in the state, which would be an error in Q#.
 
 in qsharp-syntax.maude
-in ../common/smc4qc-patch.maude
+in ../common/smc4qc/symbolic-reasoning.maude
 
 mod QSHARP-SEMANTICS is
   pr QSHARP-SYNTAX .
-  pr SYMBOLIC-REASONING-PATCHED .
+  pr SYMBOLIC-REASONING .
 
   *** qubit references as Q# values
   op qb : Nat -> Value [ctor] .
@@ -29,22 +30,34 @@ mod QSHARP-SEMANTICS is
   subsort Bind < Env .
   op _|->_ : Qid Value -> Bind [ctor prec 40] .
   op noEnv : -> Env [ctor] .
-  op _&_ : Env Env -> Env [ctor assoc comm id: noEnv prec 45] .
+  *** a stack: the innermost binding comes first
+  op _&_ : Env Env -> Env [ctor assoc id: noEnv prec 45] .
 
-  vars Q Q' : Qid . vars V V' : Value . vars E E1 E2 : Exp . var EL : ExpList .
+  vars Q Q' : Qid . vars V V' : Value . vars E E1 E2 : Exp . vars EL EL' : ExpList .
   vars Env Env' Old : Env . vars I1 I2 : Int . vars N N1 N2 N3 : Nat .
 
-  op _$in_ : Qid Env -> Bool .
-  eq Q $in ((Q |-> V) & Env) = true .
-  eq Q $in Env = false [owise] .
+  *** innermost binding of a variable; an unbound name denotes an operation
+  op look : Qid Env -> Exp .
+  eq look(Q, (Q' |-> V) & Env) = if Q == Q' then V else look(Q, Env) fi .
+  eq look(Q, noEnv) = opv(Q) .
 
+  *** set updates the innermost binding
   op upd : Env Qid Value -> Env .
-  eq upd((Q |-> V) & Env, Q, V') = (Q |-> V') & Env .
+  eq upd((Q' |-> V) & Env, Q, V') =
+     if Q == Q' then (Q |-> V') & Env else (Q' |-> V) & upd(Env, Q, V') fi .
+  eq upd(noEnv, Q, V') = noEnv .
 
+  *** closing a block: the bindings pushed since it was opened are popped, and
+  *** the updates made by set to the outer ones are kept
   op restrict : Env Env -> Env .
-  eq restrict((Q |-> V) & Env, Old) =
-     if Q $in Old then (Q |-> V) & restrict(Env, Old) else restrict(Env, Old) fi .
-  eq restrict(noEnv, Old) = noEnv .
+  eq restrict(Env, Old) = dropB(Env, sd(size(Env), size(Old))) .
+  op size : Env -> Nat .
+  eq size(noEnv) = 0 .
+  eq size((Q |-> V) & Env) = s size(Env) .
+  op dropB : Env Nat -> Env .
+  eq dropB(Env, 0) = Env .
+  eq dropB((Q |-> V) & Env, s N) = dropB(Env, N) .
+  eq dropB(noEnv, s N) = noEnv .
 
   *** evaluation of pure expressions
   op tb : Bool -> QBool .
@@ -66,11 +79,21 @@ mod QSHARP-SEMANTICS is
 
   op ev : Exp Env -> Exp .
   eq ev(V, Env) = V .
-  eq ev(Q, (Q |-> V) & Env) = V .
+  eq ev(Q, Env) = look(Q, Env) .
   eq ev(E1 + E2, Env) = ev(E1, Env) + ev(E2, Env) .
+  eq ev(E1 plus E2, Env) = plus(ev(E1, Env), ev(E2, Env)) .
+  *** + on integers, and concatenation of arrays (INT's + is commutative, so
+  *** arrays cannot use it)
+  op plus : Exp Exp -> Exp .
+  eq plus(I1, I2) = I1 + I2 .
+  eq plus(arr(EL), arr(EL')) = arr(EL, EL') .
   eq ev(_-_(E1, E2), Env) = _-_(ev(E1, Env), ev(E2, Env)) .
   eq ev(E1 * E2, Env) = ev(E1, Env) * ev(E2, Env) .
   eq ev(- E, Env) = -_(ev(E, Env)) .
+  eq ev(E1 quo E2, Env) = ev(E1, Env) quo ev(E2, Env) .
+  eq ev(E1 rem E2, Env) = ev(E1, Env) rem ev(E2, Env) .
+  eq ev(cond(E, E1, E2), Env) =
+     if ev(E, Env) == (true).QBool then ev(E1, Env) else ev(E2, Env) fi .
   eq ev(E1 lt E2, Env) = ev(E1, Env) lt ev(E2, Env) .
   eq ev(E1 le E2, Env) = ev(E1, Env) le ev(E2, Env) .
   eq ev(E1 gt E2, Env) = ev(E1, Env) gt ev(E2, Env) .
@@ -95,12 +118,46 @@ mod QSHARP-SEMANTICS is
   eq ev(_`[_`](E1, E2), Env) = _`[_`](ev(E1, Env), ev(E2, Env)) .
   eq ev(Length(E), Env) = Length(ev(E, Env)) .
 
+
+  *** tuples: the value is tup(list of values)
+  op tup : ExpList -> Value [ctor] .
+  eq ev(tuple(EL), Env) = tup(evL(EL, Env)) .
+  eq ev(proj(E, N), Env) = prj(ev(E, Env), N) .
+  op prj : Exp Nat -> Exp .
+  eq prj(tup(EL), N) = nth(EL, N) .
+
+  *** array slices
+  eq ev(slice(E, E1, E2), Env) = slc(ev(E, Env), ev(E1, Env), ev(E2, Env)) .
+  eq ev(sliceFrom(E, E1), Env) = slcFrom(ev(E, Env), ev(E1, Env)) .
+  eq ev(sliceTo(E, E2), Env) = slc(ev(E, Env), 0, ev(E2, Env)) .
+  op slc : Exp Exp Exp -> Exp .
+  op slcFrom : Exp Exp -> Exp .
+  eq slc(arr(EL), N1, N2) = arr(take(drop(EL, N1), sd(N2 + 1, N1))) .
+  eq slcFrom(arr(EL), N1) = arr(drop(EL, N1)) .
+  ops take drop : ExpList Nat -> ExpList .
+  eq take(EL, 0) = noE .
+  eq take(noE, N) = noE .
+  eq take((E, EL), s N) = E, take(EL, N) .
+  eq drop(EL, 0) = EL .
+  eq drop(noE, N) = noE .
+  eq drop((E, EL), s N) = drop(EL, N) .
+
   op evL : ExpList Env -> ExpList .
   eq evL(noE, Env) = noE .
   eq evL((E, EL), Env) = ev(E, Env), evL(EL, Env) .
 
+  *** operations as values: an identifier that is not a variable denotes an operation
+  op opv : Callable -> Value [ctor] .
+
   op evC : Call Env -> Call .
-  eq evC(Cl:Callable(EL), Env) = Cl:Callable(evL(EL, Env)) .
+  eq evC(Cl:Callable(EL), Env) = rc(Cl:Callable, Env)(evL(EL, Env)) .
+
+  *** callable of a call: a variable bound to an operation is replaced by it
+  op rc : Callable Env -> Callable .
+  ceq rc(Q, Env) = Cl:Callable if opv(Cl:Callable) := look(Q, Env) .
+  eq rc(Adjoint Cl:Callable, Env) = Adjoint rc(Cl:Callable, Env) .
+  eq rc(Controlled Cl:Callable, Env) = Controlled rc(Cl:Callable, Env) .
+  eq rc(Cl:Callable, Env) = Cl:Callable [owise] .
 
   *** parameter passing
   op bindP : Params ExpList -> Env .
@@ -373,6 +430,8 @@ mod QSHARP-SEMANTICS is
    = {(k: (ctl(adj(Ss), Cs) frame(Env) K)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
 
+  *** Controlled of an operation with several arguments receives them as a tuple
+  eq invoke((Controlled Cl)(arr(Cs), tup(EL))) = invoke((Controlled Cl)(arr(Cs), EL)) .
   *** nested Controlled: the control lists are joined
   eq invoke((Controlled Controlled Cl)(arr(Cs), arr(Cs'), EL))
    = invoke((Controlled Cl)(arr((Cs, Cs')), EL)) .
@@ -411,15 +470,13 @@ mod QSHARP-SEMANTICS is
   *** First, all the qubits involved are joined into one block.
   op Sdg : -> Matrix .
   op Tdg : -> Matrix .
-  op Tg : -> Matrix .   *** fixed T: smc4qc's uses 1 + i instead of 1 .+ i
   eq Sdg = B0 + ((-1) .* i) . B3 .
-  eq Tg = B0 + ((1 .+ i) ./ Sqrt(2)) . B3 .
   eq Tdg = B0 + ((1 .+ ((-1) .* i)) ./ Sqrt(2)) . B3 .
 
   op gateMat : Qid ~> Matrix .
   eq gateMat('I) = I .   eq gateMat('X) = X .   eq gateMat('Y) = Y .
   eq gateMat('Z) = Z .   eq gateMat('H) = H .   eq gateMat('S) = S .
-  eq gateMat('T) = Tg .  eq gateMat('Sdg) = Sdg . eq gateMat('Tdg) = Tdg .
+  eq gateMat('T) = T .  eq gateMat('Sdg) = Sdg . eq gateMat('Tdg) = Tdg .
 
   sort MList .
   subsort Matrix < MList .
@@ -472,7 +529,7 @@ mod QSHARP-SEMANTICS is
 
   *** rules: single-qubit gates (T, Sdg, Tdg) and controlled versions
   rl [T] : {(qstate: QS) (k: (invoke('T(qb(N))) K)) R}
-        => {(qstate: applyU(QS, nil, N, Tg)) (k: (val(unit) K)) R} .
+        => {(qstate: applyU(QS, nil, N, T)) (k: (val(unit) K)) R} .
   rl [Sdg] : {(qstate: QS) (k: (invoke('Sdg(qb(N))) K)) R}
           => {(qstate: applyU(QS, nil, N, Sdg)) (k: (val(unit) K)) R} .
   rl [Tdg] : {(qstate: QS) (k: (invoke('Tdg(qb(N))) K)) R}

@@ -50,6 +50,24 @@ fmod QSHARP-TRANSLATE is
   op qc : Term -> Term .   *** from the argument of a 'token
   eq qc(T) = qcon(downTerm(T, 'err)) .
 
+  *** name of a callable without its namespace: Std.Diagnostics.DumpMachine -> DumpMachine
+  op base : Term -> Qid .
+  eq base(T) = baseQ(downTerm(T, 'err)) .
+  op baseQ : Qid -> Qid .
+  eq baseQ(Q) = if rfind(string(Q), ".", length(string(Q))) == notFound then Q
+                else qid(substr(string(Q), s rfind(string(Q), ".", length(string(Q))),
+                                length(string(Q)))) fi .
+
+  *** calls that are ignored: diagnostics and messages
+  op ignored : Qid -> Bool .
+  eq ignored(Q) = Q == 'Message or Q == 'DumpMachine or Q == 'DumpRegister or Q == 'Fact
+                  or Q == 'DumpOperation or Q == 'DumpRelabelledMachine .
+
+  *** ApplyToEach and its variants
+  op applyEach : Qid -> Bool .
+  eq applyEach(Q) = Q == 'ApplyToEach or Q == 'ApplyToEachA or Q == 'ApplyToEachC
+                    or Q == 'ApplyToEachCA .
+
   op tmp : Nat -> Term .
   eq tmp(N) = qcon(qid("$t" + string(N, 10))) .
 
@@ -61,19 +79,20 @@ fmod QSHARP-TRANSLATE is
   eq binop('_==_) = '_eq_ .   eq binop('_!=_) = '_neq_ .
   eq binop('_<_) = '_lt_ .    eq binop('_<=_) = '_le_ .
   eq binop('_>_) = '_gt_ .    eq binop('_>=_) = '_ge_ .
-  eq binop('_+_) = '_+_ .     eq binop('_-_) = '_-_ .
+  eq binop('_+_) = '_plus_ .     eq binop('_-_) = '_-_ .
   eq binop('_*_) = '_*_ .     eq binop('_and_) = '_and_ .
+  eq binop('_/_) = '_quo_ .   eq binop('_%_) = '_rem_ .
   eq binop('_or_) = '_or_ .   eq binop('_`[_`]) = '_`[_`] .
 
   op isCall : Term -> Bool .
-  eq isCall('_`(_`)['token[F], A]) = downTerm(F, 'err) =/= 'Length .
+  eq isCall('_`(_`)['token[F], A]) = base(F) =/= 'Length .
   eq isCall('_`(_`)[C, A]) = true [owise] .
   eq isCall('_`(`)[C]) = true .
   eq isCall(T) = false [owise] .
 
   *** callables: identifier with Adjoint/Controlled functors
   op trCal : Term -> Term .
-  eq trCal('token[F]) = qc(F) .
+  eq trCal('token[F]) = qcon(base(F)) .
   eq trCal('Adjoint_[C]) = 'Adjoint_[trCal(C)] .
   eq trCal('Controlled_[C]) = 'Controlled_[trCal(C)] .
 
@@ -85,7 +104,21 @@ fmod QSHARP-TRANSLATE is
   ceq hx('not_[A], N) = h(P, 'not_[E], N1) if h(P, E, N1) := hx(A, N) .
   ceq hx('`[_`][A], N) = h(P, '`[_`][E], N1) if h(P, E, N1) := hxArgs(A, N) .
   ceq hx('_`(_`)['token[F], A], N) = h(P, 'Length[E], N1)
-   if downTerm(F, 'err) == 'Length /\ h(P, E, N1) := hx(A, N) .
+   if base(F) == 'Length /\ h(P, E, N1) := hx(A, N) .
+  *** array slices
+  ceq hx('_`[_`][A, '_.._[B, C]], N) = h(seq(P1, seq(P2, P)), 'slice[E1, E2, E], N3)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ h(P, E, N3) := hx(C, N2) .
+  ceq hx('_`[_`][A, '_...[B]], N) = h(seq(P1, P2), 'sliceFrom[E1, E2], N2)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) .
+  ceq hx('_`[_`][A, '..._[B]], N) = h(seq(P1, P2), 'sliceTo[E1, E2], N2)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) .
+  *** conditional expression
+  ceq hx('_?_|_[A, B, C], N) = h(seq(P1, seq(P2, P)), 'cond[E1, E2, E], N3)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ h(P, E, N3) := hx(C, N2) .
+  *** parentheses and tuples
+  ceq hx('tuple`(_`)[A], N) = h(P, 'tuple[E], N1) if h(P, E, N1) := hxArgs(A, N) .
+  eq hx('`(_`)[A], N) = hx(A, N) .
+  eq hx('`[`].@Exp@, N) = h(skipS, '`[_`]['noE.ExpList], N) .
   *** a call inside an expression is moved to a temporary
   ceq hx(T, N) = h(seq(P, 'let_=_;[tmp(N1), C]), tmp(N1), s N1)
    if isCall(T) /\ h(P, C, N1) := trCall(T, N) .
@@ -123,7 +156,21 @@ fmod QSHARP-TRANSLATE is
 
   op trB : Term Nat -> SRes .
   eq trB('`{`}.@Block@, N) = sr(skipS, N) .
-  eq trB('`{_`}[Ss], N) = trSs(Ss, N) .
+  *** a block ending in an expression returns it (implicit return)
+  ceq trB('`{_`}[A], N) = trS('return_;[A], N) if isExp(A) .
+  eq trB('`{_`}[Ss], N) = trSs(Ss, N) [owise] .
+  ceq trB('`{__`}[Ss, A], N) = sr(seq(P1, P2), N2)
+   if sr(P1, N1) := trSs(Ss, N) /\ sr(P2, N2) := trS('return_;[A], N1) .
+
+  op isExp : Term -> Bool .
+  eq isExp(Q[TL]) = not (Q in ('use_=_; 'let_=_; 'mutable_=_; 'set_=_; 'set_+=_; 'set_-=_;
+                               'set_*=_; '_=_; '_+=_; '_-=_; '_*=_; 'fail_;
+                               '_; 'return_; 'if__ 'if___ 'for_in__ 'while__ 'repeat_until_;
+                               'repeat_until_fixup_ 'within_apply_ '__)) .
+  eq isExp(T) = true [owise] .
+  op _in_ : Qid QidList -> Bool .
+  eq Q in (Q' QL:QidList) = Q == Q' or Q in QL:QidList .
+  eq Q in nil = false .
 
   op trS : Term Nat -> SRes .
   *** use
@@ -132,6 +179,24 @@ fmod QSHARP-TRANSLATE is
   ceq trS('use_=_;['token[X], 'Qubit`[_`][A]], N) =
       sr(seq(P, 'use_=_;[qc(X), 'Qubit`[_`][E]]), N1)
    if h(P, E, N1) := hx(A, N) .
+  *** use of a tuple of qubits
+  eq trS('use_=_;['tuple`(_`)[A], 'tuple`(_`)[B]], N) = sr(uses(A, B), N) .
+  *** fail: a call to an undefined operation, which gets stuck
+  eq trS('fail_;[A], N) = sr('_;['_`(`)[qcon('fail)]], N) .
+  *** assignments without set
+  eq trS('_=_;[X, A], N) = trS('set_=_;[X, A], N) .
+  eq trS('_+=_;[X, A], N) = trS('set_+=_;[X, A], N) .
+  eq trS('_-=_;[X, A], N) = trS('set_-=_;[X, A], N) .
+  eq trS('_*=_;[X, A], N) = trS('set_*=_;[X, A], N) .
+  ceq trS('set_*=_;['token[X], A], N) =
+      sr(seq(P, 'set_=_;[Q, '_*_[Q, E]]), N1)
+   if Q := qc(X) /\ h(P, E, N1) := hx(A, N) .
+  *** tuple patterns: let (a, b) = e;  ->  let $t = e; let a = proj($t, 0); ...
+  ceq trS(Q['tuple`(_`)[A], B], N) = sr(seq(P, seq(Q[tmp(N1), E], projs(Q, A, tmp(N1), 0))), s N1)
+   if Q == 'let_=_; or Q == 'mutable_=_; /\ h(P, E, N1) := hTop(B, N) .
+  ceq trS('for_in__['tuple`(_`)[A], B, Blk], N) =
+      sr(seq(P, 'for_in_`{_`}[tmp(N1), E, seq(projs('let_=_;, A, tmp(N1), 0), Ss)]), N2)
+   if h(P, E, N1) := hx(B, N) /\ sr(Ss, N2) := trB(Blk, s N1) .
   *** let, mutable, set
   ceq trS(Q['token[X], A], N) = sr(seq(P, Q[qc(X), E]), N1)
    if Q == 'let_=_; or Q == 'mutable_=_; or Q == 'set_=_; or Q == 'set_+=_;
@@ -140,7 +205,12 @@ fmod QSHARP-TRANSLATE is
       sr(seq(P, 'set_=_;[Q, '_-_[Q, E]]), N1)
    if Q := qc(X) /\ h(P, E, N1) := hx(A, N) .
   *** call as a statement, and return
-  ceq trS('_;[A], N) = sr(seq(P, '_;[C]), N1) if h(P, C, N1) := trCall(A, N) .
+  ceq trS('_;['_`(_`)['token[F], A]], N) = sr(skipS, N) if ignored(base(F)) .
+  ceq trS('_;['_`(`)['token[F]]], N) = sr(skipS, N) if ignored(base(F)) .
+  ceq trS('_;['_`(_`)['token[F], '_`,_['token[X], A]]], N) =
+      sr(seq(P, 'for_in_`{_`}[tmp(N1), E, '_;['_`(_`)[qcon(base(X)), tmp(N1)]]]), s N1)
+   if applyEach(base(F)) /\ h(P, E, N1) := hx(A, N) .
+  ceq trS('_;[A], N) = sr(seq(P, '_;[C]), N1) if h(P, C, N1) := trCall(A, N) [owise] .
   ceq trS('return_;[A], N) = sr(seq(P, 'return_;[E]), N1) if h(P, E, N1) := hTop(A, N) .
   *** if / elif / else
   ceq trS('if__[A, Blk], N) = sr(seq(P, 'if_`{_`}else`{_`}[E, Ss, skipS]), N2)
@@ -169,6 +239,19 @@ fmod QSHARP-TRANSLATE is
   ceq trS('within_apply_[Blk, T], N) = sr('within`{_`}apply`{_`}[Ss, C], N2)
    if sr(Ss, N1) := trB(Blk, N) /\ sr(C, N2) := trB(T, N1) .
 
+  op projs : Qid Term Term Nat -> Term .
+  eq projs(Q, '_`,_['token[X], NeTL], T, N) =
+     seq(projs(Q, 'token[X], T, N), projs(Q, tail('_`,_, 'token[X], NeTL), T, s N)) .
+  eq projs(Q, 'token[X], T, N) = Q[qc(X), 'proj[T, upTerm(N)]] .
+
+  op uses : Term Term -> Term .
+  eq uses('_`,_['token[X], NeTL], '_`,_[A, TL]) =
+     seq(uses('token[X], A), uses(tail('_`,_, 'token[X], NeTL), tail('_`,_, A, TL))) .
+  eq uses('token[X], 'Qubit`(`).@Alloc@) = 'use_=_;[qc(X), 'Qubit`(`).Alloc] .
+  eq uses('token[X], 'Qubit`[_`][A]) = 'use_=_;[qc(X), 'Qubit`[_`][atomExp(A)]] .
+  op atomExp : Term -> Term .
+  ceq atomExp(A) = E if h('skip.Stmts, E, N) := hx(A, 0) .
+
   op trElse : Term Nat -> SRes .
   eq trElse('else_[Blk], N) = trB(Blk, N) .
   eq trElse('elif__[A, Blk], N) = trS('if__[A, Blk], N) .
@@ -177,6 +260,11 @@ fmod QSHARP-TRANSLATE is
   *** ---------- types, parameters, declarations ----------
   op trTy : Term -> Term .
   eq trTy('_`[`][T]) = '_`[`][trTy(T)] .
+  eq trTy('tuple`(_`)[A]) = trTy(A) .
+  eq trTy('_`,_[A, NeTL]) = 'tupleT[trTy(A), trTy(tail('_`,_, A, NeTL))] .
+  eq trTy('_=>_[A, B]) = 'OpType.Type .
+  eq trTy('_->_[A, B]) = 'OpType.Type .
+  eq trTy('_=>_is_[A, B, C]) = 'OpType.Type .
   eq trTy(Cn:Constant) = qid(string(getName(Cn:Constant)) + ".Type") .
 
   op trPs : Term -> Term .

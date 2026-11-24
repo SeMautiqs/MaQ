@@ -31,6 +31,12 @@ fmod QSHARP-SYNTAX is
   op _-_ : Exp Exp -> Exp [ditto] .
   op _*_ : Exp Exp -> Exp [ditto] .
   op -_ : Exp -> Exp [ditto] .
+  op _quo_ : Exp Exp -> Exp [ditto] .
+  op _rem_ : Exp Exp -> Exp [ditto] .
+  op cond : Exp Exp Exp -> Exp [ctor] .   *** c ? a | b
+  *** + of Q# as written in source files: integer addition or array
+  *** concatenation; unlike INT's +, it is not commutative
+  op _plus_ : Exp Exp -> Exp [prec 33 gather (E e)] .
   ops _lt_ _le_ _gt_ _ge_ : Exp Exp -> Exp [prec 37] .
   ops _eq_ _neq_ : Exp Exp -> Exp [prec 51] .
   op not_ : Exp -> Exp [prec 53] .
@@ -41,6 +47,14 @@ fmod QSHARP-SYNTAX is
   op `[_`] : ExpList -> Exp [ctor] .
   op _`[_`] : Exp Exp -> Exp [prec 1] .
   op Length : Exp -> Exp .
+
+  *** tuples and their components
+  op tuple : ExpList -> Exp [ctor] .
+  op proj : Exp Nat -> Exp [ctor] .
+
+  *** array slices a[i..j], a[i...], a[...j]
+  op slice : Exp Exp Exp -> Exp [ctor] .
+  ops sliceFrom sliceTo : Exp Exp -> Exp [ctor] .
 
   *** argument lists
   op noE : -> ExpList [ctor] .
@@ -89,14 +103,16 @@ fmod QSHARP-SYNTAX is
 
   var Q : Qid . var E : Exp . var Ss : Stmts .
   eq if E { Ss } = if E { Ss } else { skip } .
-  eq set Q += E ; = set Q = Q + E ; .
+  eq set Q += E ; = set Q = Q plus E ; .
   eq repeat { Ss } until E ; = repeat { Ss } until E fixup { skip } .
 
   *** types: annotation only; the program is assumed to compile in Q#
   sorts Type Param Params .
   subsort Param < Params .
-  ops Int Bool Result Unit Qubit Double : -> Type [ctor] .
+  ops Int Bool Result Unit Qubit Double Pauli String : -> Type [ctor] .
   op _`[`] : Type -> Type [ctor] .
+  op tupleT : Type Type -> Type [ctor assoc] .
+  op OpType : -> Type [ctor] .   *** type of operations passed as arguments
   op _:_ : Qid Type -> Param [ctor prec 20] .
   op noP : -> Params [ctor] .
   op _,_ : Params Params -> Params [ctor assoc id: noP] .
@@ -111,4 +127,27 @@ fmod QSHARP-SYNTAX is
 
   var T : Type .
   eq operation Q () : T { Ss } = operation Q (noP) : T { Ss } .
+
+  *** library operations on qubit arrays, defined by desugaring
+  ***   MResetEachZ(qs) / MeasureEachZ(qs): measure (and reset) each qubit
+  ***   and return the array of results
+  op eachZ : Qid Exp Bool -> Stmts .
+  var Rst : Bool .
+  eq eachZ(Q, E, Rst) =
+     (mutable Q = [noE] ;)
+     (for '$eachq in E {
+        (let '$eachr = 'M('$eachq) ;)
+        (if Rst then ('Reset('$eachq) ;) else skip fi)
+        (set Q = Q plus ['$eachr] ;) }) .
+  eq let Q = 'MResetEachZ(E) ; = eachZ(Q, E, true) .
+  eq let Q = 'MeasureEachZ(E) ; = eachZ(Q, E, false) .
+  eq set Q = 'MResetEachZ(E) ; = eachZ('$each, E, true) (set Q = '$each ;) .
+  eq set Q = 'MeasureEachZ(E) ; = eachZ('$each, E, false) (set Q = '$each ;) .
+  eq return 'MResetEachZ(E) ; = eachZ('$each, E, true) (return '$each ;) .
+  eq return 'MeasureEachZ(E) ; = eachZ('$each, E, false) (return '$each ;) .
+  ***   MResetZ(q): measure and reset
+  eq let Q = 'MResetZ(E) ; = (let Q = 'M(E) ;) ('Reset(E) ;) .
+  eq set Q = 'MResetZ(E) ; = (set Q = 'M(E) ;) ('Reset(E) ;) .
+  eq return 'MResetZ(E) ; = (let '$mrz = 'M(E) ;) ('Reset(E) ;) (return '$mrz ;) .
+  eq 'MResetZ(E) ; = 'Reset(E) ; .
 endfm

@@ -31,6 +31,7 @@ sload qsharp-mc.maude
 load frontend/qsharp-lexer.maude
 load frontend/qsharp-surface.maude
 load frontend/qsharp-translate.maude
+load frontend/qsharp-prelude.maude
 
 fmod MAYBE{X :: TRIV} is
   sort Maybe{X} .
@@ -48,6 +49,7 @@ fmod QSHARP-PROCESSING is
   pr QSHARP-META-GRAMMARS .
   pr QSHARP-LEXER .
   pr LEXICAL .
+  pr QSHARP-PRELUDE .
 
   vars T T' P C St Ar V Pr Qs A1 Q1 C1 : Term .
   var MP : Maybe{Term} . var Ty' : Type . var MC : Module .
@@ -93,9 +95,20 @@ fmod QSHARP-PROCESSING is
 
   *** names of the operations of a program
   op opNames : Term -> String .
-  eq opNames('__[T, NeTL]) = opNames(T) + " " + opNames(tail('__, T, NeTL)) .
-  eq opNames('operation_`(_`):_`{_`}[T, TL]) = printTokens(downTerm(T, 'err)) .
-  eq opNames(T) = "" [owise] .
+  eq opNames(T) = printTokens(opNamesL(T)) .
+  op opNamesL : Term -> QidList .
+  eq opNamesL('__[T, NeTL]) = opNamesL(T) opNamesL(tail('__, T, NeTL)) .
+  eq opNamesL('operation_`(_`):_`{_`}[T, TL]) =
+     if downTerm(T, 'err) in preludeOps then nil else downTerm(T, 'err) fi .
+  eq opNamesL(T) = nil [owise] .
+
+  --- show: user operations only, one per paragraph
+  op showOps : Module Term -> String .
+  eq showOps(M, '__[T, NeTL]) = showOps(M, T) + showOps(M, tail('__, T, NeTL)) .
+  eq showOps(M, T) = if isPrelude(T) then "" else pp(M, T) + "\n" fi [owise] .
+  op isPrelude : Term -> Bool .
+  eq isPrelude('operation_`(_`):_`{_`}[T, TL]) = downTerm(T, 'err) in preludeOps .
+  eq isPrelude(T) = false [owise] .
 
   *** command bubbles: list of qids -> term in module M
   op bubble : Module Term Type ~> Term .
@@ -122,7 +135,18 @@ fmod QSHARP-PROCESSING is
      else $solutions(M, T, B:Bool, I, MAX,
                      metaSearch(M, T, finalPat, nil, '!, unbounded, I)) fi .
   op $solutions : Module Term Bool Nat Nat ResultTriple? -> String .
-  eq $solutions(M, T, B:Bool, 0, MAX, failure) = "  no final states\n" .
+  eq $solutions(M, T, B:Bool, 0, MAX, failure) =
+     "  no final states" + stuckAt(M, metaSearch(M, T, stuckPat, nil, '!, unbounded, 0)) + "\n" .
+
+  *** first statement of a stuck (terminal, non-final) state
+  op stuckPat : -> Term .
+  eq stuckPat = '`{_`}['__['k:_['K:Stmts], 'isEnd:_['false.Bool], 'R:Comps]] .
+  op stuckAt : Module ResultTriple? -> String .
+  eq stuckAt(M, failure) = "" .
+  eq stuckAt(M, {T', Ty, S}) = "; stuck at: " + pp(M, firstStmt(val(S, 'K:Stmts))) .
+  op firstStmt : Term -> Term .
+  eq firstStmt('__[T, NeTL]) = T .
+  eq firstStmt(T) = T [owise] .
   eq $solutions(M, T, B:Bool, s I, MAX, failure) = "" .
   eq $solutions(M, T, B:Bool, I, MAX, {T', Ty, S}) =
      "  result: " + pp(M, val(S, 'RES:Value))
@@ -141,6 +165,8 @@ fmod QSHARP-PROCESSING is
   eq isExec('dist_[T]) = true .
   eq isExec('dist_depth_[T, C]) = true .
   eq isExec('states_[T]) = true .
+  eq isExec('states_`(_`)in_[T, Ar, Qs]) = true .
+  eq isExec('dist_`(_`)in_depth_[T, Ar, Qs, C]) = true .
   eq isExec('mc_satisfies_[T, C]) = true .
   eq isExec('mc_`(_`)in_satisfies_[T, Ar, Qs, C]) = true .
   eq isExec('dist_`(_`)in_[T, Ar, Qs]) = true .
@@ -149,7 +175,7 @@ fmod QSHARP-PROCESSING is
 
   op exec : Term Maybe{Term} Module -> String .
   eq exec(T, maybe, M) = err("no program loaded (use open)") .
-  eq exec('show.@Command@, P, M) = ok(pp(M, P) + "\n") .
+  eq exec('show.@Command@, P, M) = ok(showOps(M, P)) .
   eq exec('run_['token[T]], P, M) = ok(solutions(M, initRun(P, downTerm(T, 'err)), true, 0, 10)) .
   eq exec('runnp_['token[T]], P, M) = ok(solutions(M, initRunNP(P, downTerm(T, 'err)), false, 0, 10)) .
   ceq exec('run_`(_`)in_['token[T], Ar, Qs], P, M) =
@@ -179,6 +205,14 @@ fmod QSHARP-PROCESSING is
   ceq exec('dist_`(_`)in_['token[T], Ar, Qs], P, M) =
       ok(dist(M, initWith('runWith, P, downTerm(T, 'err), A1, Q1), 200))
    if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) .
+  ceq exec('states_`(_`)in_['token[T], Ar, Qs], P, M) =
+      ok("  reachable states (without probabilities): "
+         + string(countStates(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), 0), 10) + "\n")
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) .
+  ceq exec('dist_`(_`)in_depth_['token[T], Ar, Qs, 'token[DT:Term]], P, M) =
+      ok(dist(M, initWith('runWith, P, downTerm(T, 'err), A1, Q1), N))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit)
+   /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
   eq exec(T, MP, M) = err("could not parse the arguments, the state or the condition") [owise] .
 
   op err : String -> String .
@@ -306,10 +340,24 @@ fmod QSHARP-PROCESSING is
   eq ruleName(Cn:Constant) =
      if getType(Cn:Constant) == 'Qid then downTerm(Cn:Constant, 'err) else getName(Cn:Constant) fi .
 
+  *** lines of scripts: blank lines and comments (starting with --- or #) are skipped
+  var LN : String . var QQ : Qid . var QL : QidList .
+  op firstLine : String -> String .
+  eq firstLine(LN) = if find(LN, "\n", 0) == notFound then LN else substr(LN, 0, find(LN, "\n", 0)) fi .
+  op restLines : String -> String .
+  eq restLines(LN) = if find(LN, "\n", 0) == notFound then "" else substr(LN, s find(LN, "\n", 0), length(LN)) fi .
+  op skipLines : String -> String .
+  eq skipLines(LN) = if LN =/= "" and-then skipLine(tokenize(firstLine(LN))) then skipLines(restLines(LN)) else LN fi .
+  op skipLine : QidList -> Bool .
+  eq skipLine(nil) = true .
+  eq skipLine(QQ QL) = substr(string(QQ), 0, 3) == "---" or substr(string(QQ), 0, 1) == "#" .
+
   *** check a condition in all final states
+  *** a final state is a counterexample unless the condition reduces to true,
+  *** so a condition that cannot be evaluated is never reported as holding
   op check : Module Term Term -> String .
   eq check(M, T, C) =
-     $check(M, metaSearch(M, T, finalPat, 'not_[C] = 'true.Bool, '!, unbounded, 0)) .
+     $check(M, metaSearch(M, T, finalPat, '_=/=_[C, 'true.Bool] = 'true.Bool, '!, unbounded, 0)) .
   op $check : Module ResultTriple? -> String .
   eq $check(M, failure) = "  holds in all final states\n" .
   eq $check(M, {T', Ty, S}) =
@@ -333,9 +381,12 @@ mod QSHARP-IO is
   op data:_ : String -> Attribute [ctor gather (&)] .
   op prog:_ : Maybe{Term} -> Attribute [ctor] .
   op mod:_ : Qid -> Attribute [ctor] .
+  *** commands still to be run from scripts loaded with load
+  op script:_ : String -> Attribute [ctor gather (&)] .
 
   sort State .
   ops idle waiting reading processing write&wait write&end finished : -> State [ctor] .
+  ops readingScript echoing : -> State [ctor] .
 
   op qsharp : -> Oid [ctor] .
   op QSharp : -> Cid [ctor] .
@@ -343,9 +394,23 @@ mod QSHARP-IO is
   op banner : -> String .
   eq banner = "\n\t\t MaQ#: Q# in Maude\n\t\t Executable semantics of a subset of Q#\n\n" .
   *** ---------- reading commands ----------
-  rl [prompt] :
-     wrote(qsharp, stdout) < qsharp : QSharp | state: write&wait, AtS >
-  => < qsharp : QSharp | state: idle, AtS > getLine(stdin, qsharp, "Q#> ") .
+  *** commands come from the pending scripts, if any, and otherwise from stdin
+  crl [prompt] :
+      wrote(qsharp, stdout) < qsharp : QSharp | state: write&wait, script: St, AtS >
+   => < qsharp : QSharp | state: idle, script: "", AtS > getLine(stdin, qsharp, "Q#> ")
+   if skipLines(St) == "" .
+
+  *** a command of a script is echoed after the prompt and then processed
+  *** as if it had been typed
+  crl [prompt-script] :
+      wrote(qsharp, stdout) < qsharp : QSharp | state: write&wait, data: D, script: St, AtS >
+   => < qsharp : QSharp | state: echoing, data: firstLine(S), script: restLines(S), AtS >
+      write(stdout, qsharp, "Q#> " + firstLine(S) + "\n")
+   if S := skipLines(St) /\ S =/= "" .
+
+  rl [echoed] :
+     wrote(qsharp, stdout) < qsharp : QSharp | state: echoing, data: S, AtS >
+  => < qsharp : QSharp | state: idle, data: "", AtS > gotLine(qsharp, stdin, S + "\n") .
 
   rl [eof] :
      gotLine(qsharp, stdin, "") < qsharp : QSharp | state: idle, AtS >
@@ -360,6 +425,33 @@ mod QSHARP-IO is
       gotLine(qsharp, stdin, S) < qsharp : QSharp | state: idle, AtS >
    => < qsharp : QSharp | state: write&wait, AtS > write(stdout, qsharp, err("unknown command"))
    if S =/= "" /\ not (metaParse(COMMANDS-GRAMMAR, tokenize(S), '@Command@) :: ResultPair) .
+
+  *** ---------- load: run the commands of a file ----------
+  crl [load] :
+      < qsharp : QSharp | input: ('load_['token[T]]), state: waiting, data: D, AtS >
+   => < qsharp : QSharp | input: maybe, state: readingScript, data: "", AtS >
+      openFile(fileManager, qsharp, S, "r")
+   if S := printTokens(downTerm(T, 'err)) .
+
+  rl [load-error] :
+     fileError(qsharp, fileManager, Reason) < qsharp : QSharp | state: readingScript, AtS >
+  => < qsharp : QSharp | state: write&wait, AtS > write(stdout, qsharp, err(Reason)) .
+
+  rl [load-opened] :
+     openedFile(qsharp, fileManager, FHIn) < qsharp : QSharp | state: readingScript, AtS >
+  => < qsharp : QSharp | state: readingScript, AtS > getLine(FHIn, qsharp) .
+
+  rl [load-line] :
+     gotLine(qsharp, FHIn, TXT) < qsharp : QSharp | state: readingScript, data: D, AtS >
+  => < qsharp : QSharp | state: readingScript, data: (D + TXT), AtS >
+     if TXT == "" then closeFile(FHIn, qsharp) else getLine(FHIn, qsharp) fi .
+
+  *** the commands of the file run before the ones still pending, so scripts
+  *** can load other scripts
+  rl [load-closed] :
+     closedFile(qsharp, FHIn) < qsharp : QSharp | state: readingScript, data: D, script: St, AtS >
+  => < qsharp : QSharp | state: write&wait, data: "", script: (D + "\n" + St), AtS >
+     wrote(qsharp, stdout) .
 
   *** ---------- open ----------
   crl [open] :
@@ -385,17 +477,17 @@ mod QSHARP-IO is
      closedFile(qsharp, FHIn) < qsharp : QSharp | state: reading, AtS >
   => < qsharp : QSharp | state: processing, AtS > .
 
-  crl [load-ok] :
+  crl [loaded-ok] :
       < qsharp : QSharp | state: processing, data: D, prog: MP, mod: MOD, AtS >
    => < qsharp : QSharp | state: write&wait, data: "", prog: P, mod: MOD, AtS >
       write(stdout, qsharp, ok("Program loaded. Operations: " + opNames(P) + "\n"))
-   if loaded(P) := load(upModule(MOD, false), D) .
+   if loaded(P) := load(upModule(MOD, false), D + "\n" + prelude) .
 
-  crl [load-error] :
+  crl [loaded-error] :
       < qsharp : QSharp | state: processing, data: D, mod: MOD, AtS >
    => < qsharp : QSharp | state: write&wait, data: "", mod: MOD, AtS >
       write(stdout, qsharp, err(S))
-   if loadError(S) := load(upModule(MOD, false), D) .
+   if loadError(S) := load(upModule(MOD, false), D + "\n" + prelude) .
 
   *** ---------- commands on the loaded program ----------
   crl [exec] :
@@ -430,7 +522,7 @@ mod QSHARP-IO is
 
   op run : -> Configuration .
   eq run = <> < qsharp : QSharp | input: maybe, state: write&wait, data: "",
-                                  prog: maybe, mod: 'QSHARP-PROPS >
+                                  prog: maybe, mod: 'QSHARP-PROPS, script: "" >
            write(stdout, qsharp, banner) .
 endm
 

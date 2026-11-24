@@ -10,9 +10,11 @@ FROM ubuntu:25.04
 ARG MAUDE_VERSION=3.5.1
 ARG MAUDE_SHA256=72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c
 ARG QDK_VERSION=1.34.0
+# samples and Quantum Katas of the Q# repository used in RQ2
+ARG QSHARP_COMMIT=0e58afc2fbb3fb8db806412b045acc0c675f8ce3
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip python3 python3-pip \
+ && apt-get install -y --no-install-recommends ca-certificates curl git unzip python3 python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
 # Maude (official Linux release)
@@ -24,6 +26,11 @@ RUN curl -fsSL -o /tmp/maude.zip \
 
 # Microsoft Quantum Development Kit, used only by the validation script
 RUN pip3 install --no-cache-dir --break-system-packages qdk==${QDK_VERSION}
+
+RUN git init -q /opt/qsharp && cd /opt/qsharp \
+ && git remote add origin https://github.com/microsoft/qsharp.git \
+ && git fetch -q --depth 1 origin ${QSHARP_COMMIT} && git checkout -q FETCH_HEAD \
+ && rm -rf .git
 
 ENV PATH=/opt/maude:$PATH \
     MAUDE_LIB=/opt/maude \

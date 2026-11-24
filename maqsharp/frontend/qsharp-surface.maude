@@ -21,9 +21,12 @@ fmod QSHARP-SURFACE-SIGN is
   op _`(`) : @Callable@ -> @Exp@ [prec 1] .
   op _`[_`] : @Exp@ @Exp@ -> @Exp@ [prec 1] .
   op `[_`] : @Args@ -> @Exp@ .
+  op tuple`(_`) : @Args@ -> @Exp@ .   *** tuples (the lexer adds the keyword)
+  op `(_`) : @Exp@ -> @Exp@ .          *** grouping
+  op `[`] : -> @Exp@ .                 *** empty array
   op _`,_ : @Args@ @Args@ -> @Args@ [assoc prec 61] .
   op -_ : @Exp@ -> @Exp@ [prec 15] .
-  op _*_ : @Exp@ @Exp@ -> @Exp@ [prec 31 gather (E e)] .
+  ops _*_ _/_ _%_ : @Exp@ @Exp@ -> @Exp@ [prec 31 gather (E e)] .
   ops _+_ _-_ : @Exp@ @Exp@ -> @Exp@ [prec 33 gather (E e)] .
   ops _<_ _<=_ _>_ _>=_ : @Exp@ @Exp@ -> @Exp@ [prec 37] .
   ops _==_ _!=_ : @Exp@ @Exp@ -> @Exp@ [prec 51] .
@@ -31,16 +34,33 @@ fmod QSHARP-SURFACE-SIGN is
   op _and_ : @Exp@ @Exp@ -> @Exp@ [prec 55 gather (E e)] .
   op _or_ : @Exp@ @Exp@ -> @Exp@ [prec 59 gather (E e)] .
   op _.._ : @Exp@ @Exp@ -> @Exp@ [prec 65] .
+  op _... : @Exp@ -> @Exp@ [prec 65] .   *** open ranges, used in array slices
+  op ..._ : @Exp@ -> @Exp@ [prec 65] .
+  op _?_|_ : @Exp@ @Exp@ @Exp@ -> @Exp@ [prec 60 gather (e e E)] .
 
   *** blocks and statements
   op `{`} : -> @Block@ .
   op `{_`} : @Stmts@ -> @Block@ .
+  *** blocks whose last item is an expression without ';' (implicit return)
+  op `{_`} : @Exp@ -> @Block@ .
+  op `{__`} : @Stmts@ @Exp@ -> @Block@ [gather (& &)] .
   op __ : @Stmts@ @Stmts@ -> @Stmts@ [assoc prec 80] .
 
   op Qubit`(`) : -> @Alloc@ .
   op Qubit`[_`] : @Exp@ -> @Alloc@ .
   op use_=_; : @Token@ @Alloc@ -> @Stmt@ .
-  ops let_=_; mutable_=_; set_=_; set_+=_; set_-=_; : @Token@ @Exp@ -> @Stmt@ .
+  sorts @Allocs@ @AllocT@ .
+  subsort @Alloc@ < @Allocs@ .
+  op _`,_ : @Allocs@ @Allocs@ -> @Allocs@ [assoc] .
+  op tuple`(_`) : @Allocs@ -> @AllocT@ .
+  op use_=_; : @Exp@ @AllocT@ -> @Stmt@ .
+  ops let_=_; mutable_=_; set_=_; set_+=_; set_-=_; set_*=_; : @Token@ @Exp@ -> @Stmt@ .
+  *** assignments without set
+  ops _=_; _+=_; _-=_; _*=_; : @Token@ @Exp@ -> @Stmt@ .
+  *** tuple patterns in let, mutable and for
+  ops let_=_; mutable_=_; : @Exp@ @Exp@ -> @Stmt@ .
+  op for_in__ : @Exp@ @Exp@ @Block@ -> @Stmt@ [prec 75] .
+  op fail_; : @Exp@ -> @Stmt@ .
   op _; : @Exp@ -> @Stmt@ [prec 70] .
   op return_; : @Exp@ -> @Stmt@ .
   op if__ : @Exp@ @Block@ -> @Stmt@ [prec 75] .
@@ -55,8 +75,15 @@ fmod QSHARP-SURFACE-SIGN is
   op within_apply_ : @Block@ @Block@ -> @Stmt@ .
 
   *** types and parameters
-  ops Qubit Result Unit Int Bool Double : -> @Type@ .
-  op _`[`] : @Type@ -> @Type@ .
+  ops Qubit Result Unit Int Bool Double Pauli String : -> @Type@ .
+  op _`[`] : @Type@ -> @Type@ [prec 0] .
+  sort @Types@ .
+  subsort @Type@ < @Types@ .
+  op _`,_ : @Types@ @Types@ -> @Types@ [assoc] .
+  op tuple`(_`) : @Types@ -> @Type@ .
+  *** operation and function types
+  ops _=>_ _->_ : @Type@ @Type@ -> @Type@ [prec 5] .
+  op _=>_is_ : @Type@ @Type@ @Chars@ -> @Type@ [prec 5] .
   ops Adj Ctl : -> @Chars@ .
   op _+_ : @Chars@ @Chars@ -> @Chars@ [prec 0] .
   op _:_ : @Token@ @Type@ -> @Param@ [prec 20] .
@@ -81,6 +108,7 @@ fmod QSHARP-COMMANDS-SIGN is
   sorts @Token@ @Bubble@ @Command@ .
   op open_ : @Token@ -> @Command@ .
   op module_ : @Token@ -> @Command@ .
+  op load_ : @Token@ -> @Command@ .
   op show : -> @Command@ .
   ops run_ runnp_ : @Token@ -> @Command@ .
   ops run_`(_`)in_ runnp_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
@@ -88,9 +116,11 @@ fmod QSHARP-COMMANDS-SIGN is
   op dist_ : @Token@ -> @Command@ .
   op dist_depth_ : @Token@ @Token@ -> @Command@ .
   op states_ : @Token@ -> @Command@ .
+  op states_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
   op mc_satisfies_ : @Token@ @Bubble@ -> @Command@ .
   op mc_`(_`)in_satisfies_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
   op dist_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
+  op dist_`(_`)in_depth_ : @Token@ @Bubble@ @Bubble@ @Token@ -> @Command@ .
   op check_`(_`)in_ensures_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
   ops quit q : -> @Command@ .
 endfm
@@ -110,9 +140,9 @@ fmod QSHARP-META-GRAMMARS is
   op keywords : -> QidList .
   eq keywords = 'operation 'function 'let 'mutable 'set 'use 'if 'elif 'else 'for 'in
                 'while 'repeat 'until 'fixup 'return 'namespace 'open 'import 'is
-                'Adj 'Ctl 'Adjoint 'Controlled 'within 'apply 'and 'or 'not 'Qubit 'Unit 'Int 'Bool 'Result 'Double
+                'Adj 'Ctl 'Adjoint 'Controlled 'within 'apply 'and 'or 'not 'Qubit 'Unit 'Int 'Bool 'Result 'Double 'Pauli 'String
                 '== '!= '< '<= '> '>= '+ '- '* '+= '-= '= '; '`, ': '.. '`( '`)
-                '`[ '`] '`{ '`} '@EntryPoint .
+                '`[ '`] '`{ '`} '@EntryPoint 'tuple 'fail '... '? '| '/ '% '*= '=> '-> .
 
   op QSHARP-GRAMMAR : -> FModule [memo] .
   eq QSHARP-GRAMMAR =
@@ -152,7 +182,7 @@ fmod QSHARP-META-GRAMMARS is
                (id-hook('Bubble, '1 '-1 '`( '`))
                 op-hook('qidListSymbol, '__, 'QidList 'QidList, 'QidList)
                 op-hook('qidSymbol, '<Qids>, nil, 'Qid)
-                id-hook('Exclude, 'in 'ensures 'satisfies)))] .
+                id-hook('Exclude, 'in 'ensures 'satisfies 'depth)))] .
           none
           none
         endfm)) .

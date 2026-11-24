@@ -19,7 +19,7 @@ os.environ.setdefault("QSHARP_PYTHON_TELEMETRY", "none")
 from qdk import qsharp
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SHOTS = int(sys.argv[1]) if len(sys.argv) > 1 else 4000
+SHOTS = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 4000
 
 # (file, namespace prefix for Q#, operations)
 CASES = [
@@ -36,15 +36,20 @@ CASES = [
     ("validation/algorithms.qs", "Algorithms.",
      ["DJConstant", "DJBalanced", "BernsteinVazirani", "Grover2", "Grover3",
       "SuperdenseAll", "EntanglementSwapping"]),
+    ("validation/extensions.qs", "Extensions.",
+     ["BellTuple", "TuplePatterns", "Arrays", "EachQubit", "OperationArgument",
+      "PauliParities", "ControlledOnInt", "FailNotReached", "Shadowing"]),
 ]
 
 
 def norm(v):
     """Normalizes a Maude or Python value into a common string."""
     s = str(v).strip()
-    s = {"(true ).QBool": "True", "(false ).QBool": "False", "unit": "()",
-         "Result.One": "One", "Result.Zero": "Zero"}.get(s, s)
-    return s
+    s = s.replace("(true ).QBool", "True").replace("(false ).QBool", "False")
+    s = s.replace("Result.", "").replace("tup", "").replace("arr", "")
+    s = s.replace("[", "(").replace("]", ")").replace(" ", "").replace("noE", "")
+    s = re.sub(r"\btrue\b", "True", re.sub(r"\bfalse\b", "False", s))
+    return {"unit": "()", "None": "()"}.get(s, s)
 
 
 def num(expr):

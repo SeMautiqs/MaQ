@@ -25,15 +25,16 @@ Commands (in all of them, `Op` also admits the form `Op (args) in state`):
 
 | Command | Effect |
 |---|---|
-| `open f.qs` / `show` | load a program / show its translation |
-| `run Op` | distinct final states, with the probability of **one** path |
+| `open f.qs` / `show` | load a program / show the translation of its operations (without the prelude) |
+| `run Op` | distinct final states, with the probability of **one** path; if there are none, the statement where execution gets stuck |
 | `runnp Op` | the same without probabilities: finite graph even with RUS loops |
 | `dist Op` | **exact distribution** of the result: adds up all paths, up to 200 steps, and reports the unexplored and the stuck mass |
 | `dist Op depth N` | the same, exploring paths of up to N steps |
-| `check Op ensures cond` | `cond` in all final states; `QS:Qubit` is the state and `RES:Value` the result |
+| `check Op ensures cond` | `cond` in all final states; `QS:Qubit` is the state and `RES:Value` the result. A final state in which `cond` does not reduce to `true` is a counterexample |
 | `mc Op satisfies F` | LTL model checking of `F` |
 | `states Op` | number of reachable states (mode without probabilities) |
 | `module M` | working module (must extend `QSHARP-PROPS`) |
+| `load f.txt` | run the commands of a file, one per line; blank lines and lines starting with `---` or `#` are skipped. The commands are echoed after the prompt and run before the pending ones, so scripts can be nested |
 | `q` / `quit` | exit |
 
 LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to phase),
@@ -47,7 +48,6 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
 | `qsharp-semantics.maude` | `QSHARP-SEMANTICS`: configuration, equations and rules |
 | `qsharp-props.maude` | `QSHARP-PROPS`: `eqUpToPhase` (phases ±1, ±i) |
 | `qsharp-mc.maude` | `QSHARP-MC`: *stutter* rule and atomic propositions for the model checker |
-| `../common/smc4qc-patch.maude` | `SYMBOLIC-REASONING-PATCHED`: fixes on top of smc4qc (`q[nil]: nil`, conjugate of `i` and arithmetic on `Real`) |
 | `../common/smc4qc/` | smc4qc, as a git submodule, unmodified |
 | `qsharp-io.maude` | interactive tool: MUnit-style I/O loop |
 | `frontend/qsharp-lexer.maude` | lexer on `String`, run before `tokenize` |
@@ -55,7 +55,8 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
 | `frontend/qsharp-translate.maude` | metalevel translation from the surface syntax into `QSHARP-SYNTAX` |
 | `examples/` | `bell.qs`, `teleport.qs`, `ghz.qs`, `rus.qs`, `functors.qs`, `random.qs`, `errors.qs` and `symbolic.maude` |
 | `tests/` | object-level tests (`run-all.sh`) and a session of the tool (`run-tool.sh`) |
-| `validation/` | `validate.py`, `validation.qs` and `algorithms.qs`: comparison with the official Q# simulator |
+| `frontend/qsharp-prelude.maude` | part of the Q# standard library, written in Q# |
+| `validation/` | `validate.py` with `validation.qs`, `algorithms.qs` and `extensions.qs`: comparison with the official Q# simulator; `samples.py` and `katas.py`: coverage on the official samples and Quantum Katas |
 | `perf/` | `run_perf.py`: scalability on GHZ(n) and Grover(n) |
 
 ## Supported subset
@@ -71,6 +72,10 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
 - Calls to user-defined operations with parameter passing and return values.
 - Functors: `Adjoint` and `Controlled` on intrinsics and on user-defined operations,
   nested and combined (`Controlled Adjoint S`), and `within { } apply { }`.
+
+The front end accepts a larger surface syntax and reduces it to this core (see below): tuples,
+slices, assignments without `set`, implicit returns, operations as arguments and a prelude of
+library operations written in Q#.
 
 **Key restriction:** a call (`Call`) is not an expression. It can only appear at the
 root of a statement: `'H('q) ;`, `let 'r = 'M('q) ;`, `set 'x = 'F(...) ;`
@@ -89,6 +94,24 @@ or `return 'F(...) ;`. Hence conditions are pure, and the grammar guarantees it.
    - A call in the condition of a `while` is rejected, because the condition is re-evaluated in each iteration.
    - `elif` becomes `else { if }` and `set x -= e` becomes `set x = x - e`.
    - `function` becomes `operation`; `namespace`, `import`, `@EntryPoint()` and characteristics (`is Adj + Ctl`) are ignored.
+   - Calls to `Message`, `DumpMachine`, `DumpRegister` and `Fact` are dropped; qualified names
+     (`Std.Diagnostics.DumpMachine`) keep only their last component.
+   - Assignments without `set` (`x = e;`, `x += e;`) become `set` statements, and a block that
+     ends in an expression returns it.
+   - `ApplyToEach(Op, qs)` becomes a `for` loop; tuple patterns in `let` and `for` become a
+     temporary and projections; `use (a, b) = (Qubit(), Qubit());` becomes two `use`s.
+   - Slices `a[i..j]`, `a[i...]` and `a[...j]` become `slice`, `sliceFrom` and `sliceTo`; `/` and
+     `%` become `quo` and `rem`, and `c ? a | b` becomes `cond`.
+   - Q#'s `+` becomes `plus`, which adds integers and concatenates arrays (Maude's `+` on `INT`
+     is commutative and cannot be used for arrays).
+6. **Lexer details.** Grouping parentheses with a comma at the top level are tuples: the lexer
+   writes the keyword `tuple` in front of them, which avoids ambiguities with Maude's own
+   parentheses. It also removes attributes (`@Test()`) and the `$` of interpolated strings.
+7. **Prelude.** `frontend/qsharp-prelude.maude` contains part of the standard library written in
+   Q# (`Measure`, `ApplyControlledOnInt`, `ApplyControlledOnBitString`, `MResetX`, `Head`, `Tail`,
+   `Rest`, `Most`); it is appended to every program and executed by the same semantics. `Measure`
+   uses an auxiliary qubit that collects the parity of the measured qubits after the basis changes.
+   `MResetZ`, `MResetEachZ` and `MeasureEachZ` are defined by equations in `QSHARP-SYNTAX`.
 5. **Execution**: `metaSearch` on `upModule(M)`, with `M = QSHARP-PROPS` or the module chosen with `module`.
    The arguments, the state and the condition of a command are bubbles parsed in `M`.
 
@@ -102,7 +125,7 @@ runs each operation in the official Q# simulator and compares it with the exact 
 given by `dist`. For each result it computes z = (k − Np)/√(Np(1−p)). A case fails if some
 |z| > 4, if a result with probability 0 shows up, or if one with probability 1 is missing.
 
-With 4000 shots, **all 26 operations agree**: maximum |z| 1.95. They include cases with
+With 4000 shots, **all 35 operations agree**. They include cases with
 irrational probabilities, such as H T H, which yields One with (2−√2)/4, joint distributions,
 Controlled S/T, teleportation of a prepared state, RUS, Deutsch–Jozsa, Bernstein–Vazirani,
 Grover (2 and 3 qubits), superdense coding and entanglement swapping.
@@ -114,8 +137,9 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 - **Rules**: gates, `M` and `Reset`; each quantum step is a state. `M` branches
   into `M-Zero` and `M-One`, prunes the branches with probability 0 and multiplies `prob:`.
 - **Equations**: the whole classical part (environments, blocks, calls, `return`).
-- Scopes use `restore(Env)`. Since Q# does not allow shadowing, it is enough to restrict the
-  environment to the previous variables. Calls use `frame(Env)`.
+- Q# allows shadowing, so environments are stacks of bindings: a declaration pushes a binding,
+  and lookups and `set` use the innermost one. Scopes use `restore(Env)`, which pops the
+  bindings pushed since the block was opened. Calls use `frame(Env)`.
 - `use` inserts `release(N)` at the end of the block. If the qubit is separated and in |0⟩,
   it is removed from the state.
 - `repeat` and `while` run one iteration at a time and place the loop again after the
@@ -135,8 +159,9 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 - **Generic applier of controlled gates** `applyU(Q, ctrls, t, U)`: generalizes smc4qc's
   `CX = B0⊗I + B3⊗X` to k controls in arbitrary positions, with
   G(c·Cs) = P0_c⊗I + P1_c⊗G(Cs). It first joins the qubits involved into one block and then applies `simplify`.
-  It is used for `Controlled` and for T, S† and T†. smc4qc's T is ill-defined: it uses `1 + i`
-  (integer addition) instead of `1 .+ i`, and therefore does not reduce.
+  It is used for `Controlled` and for T, S† and T†. (Up to smc4qc v1.0.2, T used `1 + i` instead of
+  `1 .+ i` and did not reduce; this and three other errors we reported were fixed upstream in
+  commit 56d5bcc, which MaQ# requires.)
 - **Exact distribution** (`dist`): the execution **tree** is traversed with `metaApply`, rule by
   rule, using the labels given by `getRls` on the flattened module. `search` is not enough because
   it merges identical configurations: in Bell, paths 00 and 11 end up equal and it would give 1/2
@@ -192,9 +217,8 @@ would cause parsing ambiguities.
 2. `run` still shows the probability of a single path; `dist` gives the distribution.
    LTL without fairness: termination properties of RUS loops fail because of paths with
    probability 0. Fairness or a probabilistic logic is still missing.
-3. Missing from the subset: callables as values (`ApplyToEach`), tuples, `Double` and rotations.
-   Without tuples, `Controlled SWAP([c], (a, b))` cannot be written in Q#; the semantics does
-   accept it with flat arguments: `(Controlled 'SWAP)(arr(c), a, b)`. Inside a `Controlled`
+3. Missing from the subset: `Double` and rotations, tuple parameters, lambdas and partial
+   application, user-defined types. Inside a `Controlled`
    it is not checked that the body does not measure, which Q# forbids. Calls inside
    expressions are only supported through the front end, which extracts them into temporaries,
    and not in the condition of a `while`.

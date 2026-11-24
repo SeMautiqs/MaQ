@@ -21,7 +21,7 @@ fmod QSHARP-LEXER is
              or C2 == "+=" or C2 == "-=" or C2 == "*=" or C2 == "=>" .
 
   op ops1 : String -> Bool .
-  eq ops1(C1) = find("+-*/%<>=!;,:()[]{}", C1, 0) =/= notFound .
+  eq ops1(C1) = find("+-*/%<>=!;,:()[]{}?|", C1, 0) =/= notFound .
 
   op blank : String -> Bool .
   eq blank(C1) = C1 == "\n" or C1 == "\t" or C1 == "\r" .
@@ -37,13 +37,64 @@ fmod QSHARP-LEXER is
       if J :: Nat then $lex(S, J, Acc + " ") else Acc fi
    if J := find(S, "\n", I) .
   eq $lexAt(S, I, Acc, C1, "//") = Acc [owise] .
-  *** strings
+  *** strings; the $ of interpolated strings is dropped
+  eq $lexAt(S, I, Acc, "$", "$\"") = $lex(S, I + 1, Acc) .
   ceq $lexAt(S, I, Acc, "\"", C2) = $lex(S, J + 1, Acc + " " + substr(S, I, sd(J + 1, I)) + " ")
    if J := find(S, "\"", I + 1) .
+  *** a grouping parenthesis (not the one of a call) with a comma at the top level
+  *** is a tuple: it is preceded by the keyword tuple
+  ceq $lexAt(S, I, Acc, "(", C2) = $lex(S, I + 1, Acc + " tuple ( ")
+   if not callParen(Acc) /\ topComma(S, I + 1, 0) .
+  *** attributes such as @EntryPoint() or @Test() are dropped
+  ceq $lexAt(S, I, Acc, "@", C2) = $lex(S, J + 1, Acc + " ") if J := find(S, ")", I) .
+  *** open ranges: ...
+  ceq $lexAt(S, I, Acc, ".", "..") = $lex(S, I + 3, Acc + " ... ") if substr(S, I, 3) == "..." .
   *** two- and one-character operators, spaces and everything else
   eq $lexAt(S, I, Acc, C1, C2) =
       if ops2(C2) then $lex(S, I + 2, Acc + " " + C2 + " ")
       else if ops1(C1) then $lex(S, I + 1, Acc + " " + C1 + " ")
       else if blank(C1) then $lex(S, I + 1, Acc + " ")
       else $lex(S, I + 1, Acc + C1) fi fi fi [owise] .
+
+  *** the parenthesis after the text Acc opens the arguments of a call
+  op callParen : String -> Bool .
+  eq callParen(Acc) = $callParen(lastWord(Acc, length(Acc)), lastChar(Acc, length(Acc))) .
+  op $callParen : String String -> Bool .
+  eq $callParen(S, C1) =
+     (C1 == ")" or C1 == "]" or (identChar(C1) and not kw(S))) .
+
+  op kw : String -> Bool .
+  eq kw(S) = S == "if" or S == "elif" or S == "while" or S == "until" or S == "return"
+          or S == "use" or S == "borrow" or S == "let" or S == "mutable" or S == "set"
+          or S == "and" or S == "or" or S == "not" or S == "in" or S == "fail"
+          or S == "tuple" or S == "for" .
+
+  op identChar : String -> Bool .
+  eq identChar(C1) = (C1 >= "a" and C1 <= "z") or (C1 >= "A" and C1 <= "Z")
+                  or (C1 >= "0" and C1 <= "9") or C1 == "_" or C1 == "." .
+
+  *** last non-blank character and last word of the text before position I
+  op lastChar : String Nat -> String .
+  eq lastChar(S, 0) = "" .
+  eq lastChar(S, s I) = if substr(S, I, 1) == " " then lastChar(S, I) else substr(S, I, 1) fi .
+  op lastWord : String Nat -> String .
+  eq lastWord(S, 0) = "" .
+  eq lastWord(S, s I) = if substr(S, I, 1) == " " then lastWord(S, I) else $word(S, s I, s I) fi .
+  op $word : String Nat Nat -> String .
+  eq $word(S, 0, J) = substr(S, 0, J) .
+  eq $word(S, s I, J) = if identChar(substr(S, I, 1)) then $word(S, I, J)
+                        else substr(S, s I, sd(J, s I)) fi .
+
+  *** a comma at depth 0 before the parenthesis that closes the current one
+  op topComma : String Nat Nat -> Bool .
+  ceq topComma(S, I, J) = false if I >= length(S) .
+  ceq topComma(S, I, J) = $topComma(S, I, J, substr(S, I, 1)) if I < length(S) .
+  op $topComma : String Nat Nat String -> Bool .
+  eq $topComma(S, I, J, "(") = topComma(S, I + 1, s J) .
+  eq $topComma(S, I, J, "[") = topComma(S, I + 1, s J) .
+  eq $topComma(S, I, 0, ")") = false .
+  eq $topComma(S, I, s J, ")") = topComma(S, I + 1, J) .
+  eq $topComma(S, I, s J, "]") = topComma(S, I + 1, J) .
+  eq $topComma(S, I, 0, ",") = true .
+  eq $topComma(S, I, J, C1) = topComma(S, I + 1, J) [owise] .
 endfm

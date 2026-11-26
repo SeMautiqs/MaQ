@@ -1,4 +1,4 @@
-"""Comparison of MaQ# with QRAT on the examples of QRAT's artifact (RQ4).
+"""Comparison of MaQ# with QRAT on the examples of QRAT's artifact.
 
 QRAT (https://github.com/canhminhdo/qrat) must be built beforehand. The script
 runs QRAT on teleport.qw, loop.qw, entangleswap.qw and grover-N.qw from its
@@ -18,8 +18,16 @@ SIZES = [int(n) for n in sys.argv[4:]] or [5, 10, 15, 20]
 
 
 def unlimited_stack():
-    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
-    resource.setrlimit(resource.RLIMIT_STACK, (hard, hard))
+    # raise the stack limit as far as the system allows (on macOS the hard limit
+    # may be reported as unlimited but cannot be used as the soft limit)
+    soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    for lim in (hard, 2**30, 2**28, 64 * 2**20 - 2**12):
+        if lim == resource.RLIM_INFINITY or hard == resource.RLIM_INFINITY or lim <= hard:
+            try:
+                resource.setrlimit(resource.RLIMIT_STACK, (lim, hard))
+                return
+            except (ValueError, OSError):
+                pass
 
 
 def timed(cmd, inp, cwd):

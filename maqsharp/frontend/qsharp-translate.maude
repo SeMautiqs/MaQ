@@ -18,10 +18,10 @@ fmod QSHARP-TRANSLATE is
   pr META-LEVEL .
   pr CONVERSION .
 
-  vars T T' A B C E X F Ty Blk Ss El : Term .
-  vars P P1 P2 E1 E2 : Term .
+  vars T T' A B C E X F Ty Blk Ss El Sp : Term .
+  vars P P1 P2 P3 E1 E2 E3 D : Term .
   var TL : TermList . var NeTL : NeTermList .
-  vars N N1 N2 N3 : Nat .
+  vars N N1 N2 N3 N4 : Nat .
   vars Q Q' : Qid .
 
   op skipS : -> Term .
@@ -41,6 +41,12 @@ fmod QSHARP-TRANSLATE is
   eq trAtom('false, R:[Rat]) = 'false.QBool .
   eq trAtom('Zero, R:[Rat]) = 'Zero.Result .
   eq trAtom('One, R:[Rat]) = 'One.Result .
+  ceq trAtom(Q, R:[Rat]) = 'dbl[upTerm(R':Rat), upTerm(0)]
+   if R':Rat := decRat(string(Q)) .   *** Double literals such as 4.0 or .5
+  op decRat : String ~> Rat .
+  ceq decRat(S:String) = rat(substr(S:String, 0, I:Nat) + substr(S:String, s I:Nat, length(S:String)), 10)
+                         / (10 ^ sd(length(S:String), s I:Nat))
+   if I:Nat := find(S:String, ".", 0) .
   eq trAtom(Q, R:[Rat]) = qcon(Q) [owise] .
 
   *** metarepresentation of the QSHARP-SYNTAX Qid constant 'x: ''x.Qid
@@ -60,7 +66,7 @@ fmod QSHARP-TRANSLATE is
 
   *** calls that are ignored: diagnostics and messages
   op ignored : Qid -> Bool .
-  eq ignored(Q) = Q == 'Message or Q == 'DumpMachine or Q == 'DumpRegister or Q == 'Fact
+  eq ignored(Q) = Q == 'Message or Q == 'DumpMachine or Q == 'DumpRegister 
                   or Q == 'DumpOperation or Q == 'DumpRelabelledMachine .
 
   *** ApplyToEach and its variants
@@ -85,9 +91,10 @@ fmod QSHARP-TRANSLATE is
   eq binop('_or_) = '_or_ .   eq binop('_`[_`]) = '_`[_`] .
 
   op isCall : Term -> Bool .
-  eq isCall('_`(_`)['token[F], A]) = base(F) =/= 'Length .
+  eq isCall('_`(_`)['token[F], A]) = base(F) =/= 'Length and base(F) =/= 'IntAsDouble .
   eq isCall('_`(_`)[C, A]) = true [owise] .
-  eq isCall('_`(`)[C]) = true .
+  eq isCall('_`(`)['token[F]]) = base(F) =/= 'PI .
+  eq isCall('_`(`)[C]) = true [owise] .
   eq isCall(T) = false [owise] .
 
   *** callables: identifier with Adjoint/Controlled functors
@@ -105,7 +112,15 @@ fmod QSHARP-TRANSLATE is
   ceq hx('`[_`][A], N) = h(P, '`[_`][E], N1) if h(P, E, N1) := hxArgs(A, N) .
   ceq hx('_`(_`)['token[F], A], N) = h(P, 'Length[E], N1)
    if base(F) == 'Length /\ h(P, E, N1) := hx(A, N) .
+  ceq hx('_`(_`)['token[F], A], N) = h(P, 'toD[E], N1)
+   if base(F) == 'IntAsDouble /\ h(P, E, N1) := hx(A, N) .
+  ceq hx('_`(`)['token[F]], N) = h(skipS, 'dbl[upTerm(0), upTerm(1)], N) if base(F) == 'PI .
   *** array slices
+  ceq hx('_`[_`][A, '_.._.._[B, C, D]], N) = h(seq(P1, seq(P2, seq(P3, P))), 'sliceStep[E1, E2, E3, E], N4)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ h(P3, E3, N3) := hx(C, N2)
+      /\ h(P, E, N4) := hx(D, N3) .
+  ceq hx('`[_`,size`=_`][A, B], N) = h(seq(P1, P2), 'rep[E1, E2], N2)
+   if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) .
   ceq hx('_`[_`][A, '_.._[B, C]], N) = h(seq(P1, seq(P2, P)), 'slice[E1, E2, E], N3)
    if h(P1, E1, N1) := hx(A, N) /\ h(P2, E2, N2) := hx(B, N1) /\ h(P, E, N3) := hx(C, N2) .
   ceq hx('_`[_`][A, '_...[B]], N) = h(seq(P1, P2), 'sliceFrom[E1, E2], N2)
@@ -206,6 +221,9 @@ fmod QSHARP-TRANSLATE is
    if Q := qc(X) /\ h(P, E, N1) := hx(A, N) .
   *** call as a statement, and return
   ceq trS('_;['_`(_`)['token[F], A]], N) = sr(skipS, N) if ignored(base(F)) .
+  *** Fact(c, msg) is an assertion on c; the message is dropped
+  ceq trS('_;['_`(_`)['token[F], '_`,_[A, B]]], N) = sr(seq(P, 'assert_;[E]), N1)
+   if base(F) == 'Fact /\ h(P, E, N1) := hx(A, N) .
   ceq trS('_;['_`(`)['token[F]]], N) = sr(skipS, N) if ignored(base(F)) .
   ceq trS('_;['_`(_`)['token[F], '_`,_['token[X], A]]], N) =
       sr(seq(P, 'for_in_`{_`}[tmp(N1), E, '_;['_`(_`)[qcon(base(X)), tmp(N1)]]]), s N1)
@@ -269,12 +287,51 @@ fmod QSHARP-TRANSLATE is
 
   op trPs : Term -> Term .
   eq trPs('_:_['token[X], Ty]) = '_:_[qc(X), trTy(Ty)] .
+  eq trPs('tuple`(_`)[A]) = 'ptup[trPs(A)] .
   eq trPs('_`,_[A, NeTL]) = '_`,_[trPs(A), trPs(tail('_`,_, A, NeTL))] .
 
   op body : Term -> Term .
   ceq body(Blk) = Ss if sr(Ss, N) := trB(Blk, 0) .
 
+  *** operation bodies given as a list of specializations
+  op isSp : Term -> Bool .
+  eq isSp('body`(...`)_[T]) = true .
+  eq isSp('body_;[T]) = true .
+  eq isSp('adjoint`(...`)_[T]) = true .
+  eq isSp('adjoint_;[T]) = true .
+  eq isSp('controlled`(_`,...`)_[T, T']) = true .
+  eq isSp('controlled_;[T]) = true .
+  eq isSp('controlled_`(_`,...`)_[T, T', E]) = true .
+  eq isSp('controlled__;[T, T']) = true .
+  eq isSp('__[T, NeTL]) = isSp(T) .
+  eq isSp(T) = false [owise] .
+
+  *** the body block among the specializations
+  op spBody : Term -> Term .
+  eq spBody('body`(...`)_[Blk]) = Blk .
+  eq spBody('__[A, NeTL]) =
+     if spBody(A) == '`{`}.@Block@ then spBody(tail('__, A, NeTL)) else spBody(A) fi .
+  eq spBody(T) = '`{`}.@Block@ [owise] .
+
+  *** the other specializations, as declarations
+  op trSp : Term Term -> Term .
+  eq trSp(F, 'adjoint`(...`)_[Blk]) = 'adjBody[F, body(Blk)] .
+  eq trSp(F, 'adjoint_;['self.@Gen@]) = 'adjSelf[F] .
+  eq trSp(F, 'controlled`(_`,...`)_['token[C], Blk]) = 'ctlBody[F, qc(C), body(Blk)] .
+  eq trSp(F, 'controlled_`(_`,...`)_[A, 'token[C], Blk]) = 'ctlAdjBody[F, qc(C), body(Blk)] .
+  eq trSp(F, 'controlled__;[A, 'self.@Gen@]) = 'ctlAdjSelf[F] .
+  eq trSp(F, 'controlled__;[A, 'invert.@Gen@]) = 'ctlAdjInvert[F] .
+  eq trSp(F, 'controlled__;[A, 'distribute.@Gen@]) = 'ctlAdjDistribute[F] .
+  eq trSp(F, '__[A, NeTL]) = '__[trSp(F, A), trSp(F, tail('__, A, NeTL))] .
+  eq trSp(F, T) = 'noD.Decls [owise] .
+
   op trD : Term -> Term .
+  ceq trD('operation_`(_`):__['token[F], A, Ty, '`{_`}[Sp]]) =
+     '__[trD('operation_`(_`):__['token[F], A, Ty, spBody(Sp)]), trSp(qc(F), Sp)]
+   if isSp(Sp) .
+  ceq trD('operation_`(`):__['token[F], Ty, '`{_`}[Sp]]) =
+     '__[trD('operation_`(`):__['token[F], Ty, spBody(Sp)]), trSp(qc(F), Sp)]
+   if isSp(Sp) .
   eq trD('operation_`(_`):__['token[F], A, Ty, Blk]) =
      'operation_`(_`):_`{_`}[qc(F), trPs(A), trTy(Ty), body(Blk)] .
   eq trD('operation_`(`):__['token[F], Ty, Blk]) =

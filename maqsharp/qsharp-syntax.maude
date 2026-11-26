@@ -14,7 +14,7 @@
 ***   - true and false are the Q# Booleans, different from Maude's Bool
 
 fmod QSHARP-SYNTAX is
-  pr INT .
+  pr RAT .
   pr QID .
 
   sorts QBool Result Unit Value Exp ExpList .
@@ -25,6 +25,9 @@ fmod QSHARP-SYNTAX is
   ops true false : -> QBool [ctor] .
   ops Zero One : -> Result [ctor] .
   op unit : -> Unit [ctor] .
+  *** values of type Double, kept exact as r + s pi with r, s rational
+  op dbl : Rat Rat -> Value [ctor] .
+  op toD : Exp -> Exp [ctor] .     *** IntAsDouble
 
   *** pure expressions
   op _+_ : Exp Exp -> Exp [ditto] .
@@ -55,6 +58,9 @@ fmod QSHARP-SYNTAX is
   *** array slices a[i..j], a[i...], a[...j]
   op slice : Exp Exp Exp -> Exp [ctor] .
   ops sliceFrom sliceTo : Exp Exp -> Exp [ctor] .
+  *** slices with a step a[i..s..j], and repeated arrays [v, size = n]
+  op sliceStep : Exp Exp Exp Exp -> Exp [ctor] .
+  op rep : Exp Exp -> Exp [ctor] .
 
   *** argument lists
   op noE : -> ExpList [ctor] .
@@ -91,6 +97,9 @@ fmod QSHARP-SYNTAX is
   op set_+=_; : Qid Exp -> Stmt .
   op _; : Call -> Stmt [ctor prec 70] .
   op return_; : Exp -> Stmt [ctor] .
+  *** assertions (Fact): a false one ends the execution with assertionFailed
+  op assert_; : Exp -> Stmt [ctor] .
+  op assertionFailed : -> Value [ctor] .
   op return_; : Call -> Stmt [ctor] .
   op if_{_} : Exp Stmts -> Stmt .
   op if_{_}else{_} : Exp Stmts Stmts -> Stmt [ctor] .
@@ -115,6 +124,7 @@ fmod QSHARP-SYNTAX is
   op OpType : -> Type [ctor] .   *** type of operations passed as arguments
   op _:_ : Qid Type -> Param [ctor prec 20] .
   op noP : -> Params [ctor] .
+  op ptup : Params -> Param [ctor] .   *** tuple pattern in the parameters
   op _,_ : Params Params -> Params [ctor assoc id: noP] .
 
   *** declarations
@@ -123,6 +133,14 @@ fmod QSHARP-SYNTAX is
   op operation_`(_`):_{_} : Qid Params Type Stmts -> Decl [ctor] .
   op operation_`(`):_{_} : Qid Type Stmts -> Decl .
   op noD : -> Decls [ctor] .
+  *** explicit specializations of an operation: adjoint and controlled bodies,
+  *** the controlled ones with the name of the control register, and the
+  *** generation directives that differ from the default
+  op adjBody : Qid Stmts -> Decl [ctor] .
+  op adjSelf : Qid -> Decl [ctor] .
+  op ctlBody : Qid Qid Stmts -> Decl [ctor] .
+  op ctlAdjBody : Qid Qid Stmts -> Decl [ctor] .
+  ops ctlAdjSelf ctlAdjInvert ctlAdjDistribute : Qid -> Decl [ctor] .
   op __ : Decls Decls -> Decls [ctor assoc comm id: noD] .
 
   var T : Type .

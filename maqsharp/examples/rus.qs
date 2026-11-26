@@ -18,3 +18,19 @@ operation Count() : Int {
     }
     return k;
 }
+
+// RUS loop that counts its attempts: the counter makes the state space infinite,
+// so states, check and mc need a depth (dist explores 200 steps by default)
+operation Attempts() : Int {
+    use q = Qubit();
+    mutable n = 0;
+    repeat {
+        H(q);
+        set n += 1;
+    } until M(q) == One
+    fixup {
+        Reset(q);
+    }
+    Reset(q);
+    return n;
+}

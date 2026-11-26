@@ -1,6 +1,3 @@
-[submodule "common/smc4qc"]
-	path = common/smc4qc
-	url = https://github.com/canhminhdo/smc4qc.git
 [submodule "common/as4qc"]
 	path = common/as4qc
 	url = https://github.com/canhminhdo/as4qc.git

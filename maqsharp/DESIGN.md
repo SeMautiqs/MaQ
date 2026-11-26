@@ -1,7 +1,7 @@
 # MaQ#: Q# in Maude — design notes
 
-Executable operational semantics of a fragment of Q#, built on top of the
-symbolic qubit semantics of smc4qc (Canh Minh Do, JAIST).
+Executable operational semantics of a fragment of Q#, built on exact quantum
+states whose amplitudes use the complex numbers of AS4QC (Canh Minh Do, JAIST).
 
 ## Quick start
 
@@ -33,6 +33,7 @@ Commands (in all of them, `Op` also admits the form `Op (args) in state`):
 | `check Op ensures cond` | `cond` in all final states; `QS:Qubit` is the state and `RES:Value` the result. A final state in which `cond` does not reduce to `true` is a counterexample |
 | `mc Op satisfies F` | LTL model checking of `F` |
 | `states Op` | number of reachable states (mode without probabilities) |
+| `check ... depth N` / `states ... depth N` / `mc ... depth N` | the same, on the states reachable in at most N steps; they report whether more states are reachable (infinite state graphs, e.g. a RUS loop with a counter); `mc` model checks a copy of the working module whose rules act on `< C, F >`, with `F` the steps left and the configuration frozen |
 | `module M` | working module (must extend `QSHARP-PROPS`) |
 | `load f.txt` | run the commands of a file, one per line; blank lines and lines starting with `---` or `#` are skipped. The commands are echoed after the prompt and run before the pending ones, so scripts can be nested |
 | `q` / `quit` | exit |
@@ -44,12 +45,13 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
 
 | File | Contents |
 |---|---|
-| `qsharp-syntax.maude` | `QSHARP-SYNTAX`: syntax only; does not depend on smc4qc |
+| `qsharp-syntax.maude` | `QSHARP-SYNTAX`: syntax only; does not depend on the quantum states |
 | `qsharp-semantics.maude` | `QSHARP-SEMANTICS`: configuration, equations and rules |
-| `qsharp-props.maude` | `QSHARP-PROPS`: `eqUpToPhase` (phases ±1, ±i) |
+| `qsharp-state.maude` | `MAQ-STATE`: exact projective states, gates, measurement, `qubitAt`, `eqUpToPhase` |
+| `qsharp-props.maude` | `QSHARP-PROPS`: entry point for properties |
 | `qsharp-mc.maude` | `QSHARP-MC`: *stutter* rule and atomic propositions for the model checker |
-| `../common/smc4qc/` | smc4qc, as a git submodule, unmodified |
-| `qsharp-io.maude` | interactive tool: MUnit-style I/O loop |
+| `../common/as4qc/` | AS4QC, as a git submodule, unmodified (only its module `CPX` is used) |
+| `qsharp-io.maude` | interactive tool: I/O command loop |
 | `frontend/qsharp-lexer.maude` | lexer on `String`, run before `tokenize` |
 | `frontend/qsharp-surface.maude` | signature of the Q# surface syntax and of the commands, and grammars with bubbles built at the metalevel |
 | `frontend/qsharp-translate.maude` | metalevel translation from the surface syntax into `QSHARP-SYNTAX` |
@@ -94,7 +96,8 @@ or `return 'F(...) ;`. Hence conditions are pure, and the grammar guarantees it.
    - A call in the condition of a `while` is rejected, because the condition is re-evaluated in each iteration.
    - `elif` becomes `else { if }` and `set x -= e` becomes `set x = x - e`.
    - `function` becomes `operation`; `namespace`, `import`, `@EntryPoint()` and characteristics (`is Adj + Ctl`) are ignored.
-   - Calls to `Message`, `DumpMachine`, `DumpRegister` and `Fact` are dropped; qualified names
+   - `Fact(c, msg)` becomes `assert c ;`, which ends the execution with `assertionFailed` if c
+     is false. Calls to `Message`, `DumpMachine` and `DumpRegister` are dropped; qualified names
      (`Std.Diagnostics.DumpMachine`) keep only their last component.
    - Assignments without `set` (`x = e;`, `x += e;`) become `set` statements, and a block that
      ends in an expression returns it.
@@ -132,8 +135,8 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 
 ## Design of the semantics
 
-- Configuration: `{(qstate: Q) (k: K) (env: Env) (decls: D) (next: N) (prob: P) (result: V) (isEnd: B)}`.
-  `k:` is a continuation of statements.
+- Configuration: `{(qstate: Q) (code: S) (env: Env) (decls: D) (next: N) (prob: P) (result: V) (isEnd: B)}`.
+  `code:` is the rest of the program to be executed: statements and auxiliary items.
 - **Rules**: gates, `M` and `Reset`; each quantum step is a state. `M` branches
   into `M-Zero` and `M-One`, prunes the branches with probability 0 and multiplies `prob:`.
 - **Equations**: the whole classical part (environments, blocks, calls, `return`).
@@ -143,7 +146,7 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 - `use` inserts `release(N)` at the end of the block. If the qubit is separated and in |0⟩,
   it is removed from the state.
 - `repeat` and `while` run one iteration at a time and place the loop again after the
-  `restore`, so the continuation does not grow.
+  `restore`, so `code:` does not grow.
 - When a qubit is released, `next:` becomes the first free index according to the live qubits.
   States are canonical, and a `use` inside a loop does not make the graph infinite.
 - Two modes: `run`/`runWith` accumulate the path probability in `prob:`;
@@ -154,14 +157,37 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
     traversed backwards. Classical bindings and initial `use`s are kept in front.
   - `Controlled Op(ctrls, args)` runs `ctl(body, ctrls)`: each call of the body receives
     the controls. Nested `Controlled`s join their control lists.
+  - Explicit specializations are translated into extra declarations (`adjBody`, `adjSelf`,
+    `ctlBody`, `ctlAdjBody`, `ctlAdjSelf`, `ctlAdjInvert`, `ctlAdjDistribute`); `adjOf`,
+    `ctlOf` and `ctlAdjOf` use them when present and otherwise generate the specialization,
+    with the Q# defaults: `controlled adjoint` distributes an explicit adjoint and otherwise
+    inverts an explicit controlled body. The control register of a controlled body is bound
+    with `let`. `validation/specializations.qs` checks each case against the QDK.
   - Normalization: `Adjoint Adjoint C = C` and `Adjoint Controlled C = Controlled Adjoint C`.
   - `within {A} apply {B}` runs as `A; B; adj(A)`, each part in its own scope.
-- **Generic applier of controlled gates** `applyU(Q, ctrls, t, U)`: generalizes smc4qc's
-  `CX = B0⊗I + B3⊗X` to k controls in arbitrary positions, with
-  G(c·Cs) = P0_c⊗I + P1_c⊗G(Cs). It first joins the qubits involved into one block and then applies `simplify`.
-  It is used for `Controlled` and for T, S† and T†. (Up to smc4qc v1.0.2, T used `1 + i` instead of
-  `1 .+ i` and did not reduce; this and three other errors we reported were fixed upstream in
-  commit 56d5bcc, which MaQ# requires.)
+- **Exact projective states** (`qsharp-state.maude`): amplitudes are elements of Z[ω], ω = e^{iπ/4},
+  written as the 4-tuples `(a,b,c,d)` of AS4QC, possibly multiplied by symbolic constants of sort
+  `NzCpx` (e.g. `a`, `b` with `a * a ^* + b * b ^* = (1,0,0,0)`). A block `(q[NL]: V)` stands for
+  V/‖V‖, so states are never normalized: H is applied as [[1,1],[1,−1]] and the state after a
+  measurement is just PV. Normalizing would take amplitudes out of the ring: after measuring a
+  result with probability (2−√2)/4 one would have to divide by sin(π/8).
+- **Canonical form** of each block, which keeps state graphs finite: common factors 2 and √2 are
+  divided out, the global phase is fixed by a power of ω (the coefficient of the smallest ket is
+  made lexicographically largest), and qubits in a basis state are split into their own blocks.
+  Common factors other than 2 and √2 are not removed.
+- **Exact probabilities** in Q(√2): p = ⟨PV,PV⟩/⟨V,V⟩, printed as `r + s *Sqrt2` with r, s rational.
+- **Rotations**: `Double` values are kept exact as `dbl(r, s)` = r + s pi with r, s rational, so
+  `PI()`, literals, `IntAsDouble` and the arithmetic need no floats (comparisons use a rational
+  approximation of pi). A rotation by k pi/4 is a gate over Z[w]: R1 = diag(1, w^k) for any k;
+  Rx, Ry, Rz need k even (entries Sqrt(2) cos, Sqrt(2) sin with scale s = 1, and w^(-+k/2)); an odd
+  Rz without controls is applied as diag(1, w^k), up to its global phase, and is stuck under
+  `Controlled`. `Adjoint` negates the angle; `R(PauliI, t)` is a global phase, which under
+  `Controlled` is R1(-t/2) on the last control.
+- **Generic applier of controlled gates** `applyU(Q, ctrls, t, U)`: k controls in arbitrary
+  positions. A gate is `g(m00, m01, m10, m11, s)`, the matrix M/√2^s; terms whose controls are
+  not all 1 are multiplied by √2^s, so that both branches have the same scale. It first joins
+  the qubits involved into one block. All the gates (X, Y, Z, H, S, T, S†, T†, CNOT, CY, CZ,
+  CCNOT, SWAP and `Controlled`) use it.
 - **Exact distribution** (`dist`): the execution **tree** is traversed with `metaApply`, rule by
   rule, using the labels given by `getRls` on the flattened module. `search` is not enough because
   it merges identical configurations: in Bell, paths 00 and 11 end up equal and it would give 1/2
@@ -171,14 +197,10 @@ Grover (2 and 3 qubits), superdense coding and entanglement swapping.
 - **Model checking**: `QSHARP-MC` adds the *stutter* rule on final states and the
   propositions. The tool joins it at the metalevel with the working module and runs
   `modelCheck` in the mode without probabilities. This way `dist` uses the module without *stutter*.
-- **Global phase of a separated qubit**: a single-qubit block `c . |k>` becomes `|k>`.
-  Since the state is normalized, |c| = 1 and c is a global phase. Without this, after measuring states
-  with T phases, smc4qc leaves c as an expression with roots that it cannot reduce to modulus 1, and
-  the next measurement gets stuck.
 - Entry points: `run(Decls, 'Main)`, or `runWith(Decls, 'Op, args, initialState, nextIndex)`
   to start from symbolic states.
 
-Programs are written in modules that import **only** `QSHARP-SYNTAX`. smc4qc's
+Programs are written in modules that import **only** `QSHARP-SYNTAX`. The
 `NatList` juxtaposition `__` falls into the same kind as `Exp` and
 would cause parsing ambiguities.
 
@@ -186,8 +208,8 @@ would cause parsing ambiguities.
 
 - **Bell**: the result is always `true` (correlated measurements) and the qubits are released.
 - **Teleportation** with symbolic `a|0⟩+b|1⟩`: the target receives the state in all
-  branches. The branch m1=m2=One gives `-(a|0⟩+b|1⟩)`, i.e., a global phase.
-- With `eqUpToPhase`, teleportation has no counterexamples.
+  branches. The branch m1=m2=One computes `-(a|0⟩+b|1⟩)`, which the canonical form turns into
+  `a|0⟩+b|1⟩`, so teleportation has no counterexamples both with `==` and with `eqUpToPhase`.
 - **Calls**: `CountOnes(3)` with random bits gives 0, 1, 2 or 3.
 - **GHZ** with `Qubit[3]`: the state before measuring is (|000⟩+|111⟩)/√2 and the number of ones is always 0 or 3.
 - **Functors** (`functors.qs`):
@@ -213,18 +235,16 @@ would cause parsing ambiguities.
 
 ## Known limitations and next steps
 
-1. `eqUpToPhase` only covers the phases ±1 and ±i; T phases would need more.
+1. The canonical form does not remove common factors other than 2 and √2 (none appear in the
+   examples), and input states are written unnormalized (`|0> + |1>` for |+>).
 2. `run` still shows the probability of a single path; `dist` gives the distribution.
    LTL without fairness: termination properties of RUS loops fail because of paths with
    probability 0. Fairness or a probabilistic logic is still missing.
-3. Missing from the subset: `Double` and rotations, tuple parameters, lambdas and partial
+3. Missing from the subset: rotations by angles other than multiples of pi/4 (pi/2 for Rx, Ry,
+   and controlled Rz), lambdas and partial
    application, user-defined types. Inside a `Controlled`
    it is not checked that the body does not measure, which Q# forbids. Calls inside
    expressions are only supported through the front end, which extracts them into temporaries,
    and not in the condition of a `while`.
 4. More informative LTL counterexamples: currently only the applied rules are shown.
 5. More precise front-end error messages: currently the token is reported, not the rule.
-6. smc4qc issues found (reported to the author): `q[nil]: nil` after measuring a whole
-   block, `(i)^*` not reducing, the T gate defined with `1 + i`, and `Sqrt`/`./`/`.*`/`.+`
-   declared only on `Complex`, so that measurement gets stuck when the probability
-   contains a square root.

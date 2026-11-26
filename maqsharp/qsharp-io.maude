@@ -16,14 +16,16 @@
 ***   dist Op (args) in state      probabilities of all paths (up to 200 steps)
 ***   dist Op depth N              same, but exploring paths of up to N steps
 ***   mc Op satisfies F            LTL model checking of F (mode without probabilities);
-***   mc Op (args) in state satisfies F     propositions: ended, returns(V),
+***   mc Op (args) in state satisfies F     propositions: ended, failed, returns(V),
 ***                                qubit(N, V), qubitPh(N, V), entangled(N), liveLE(K)
 ***   states Op                    number of reachable states (mode without probabilities)
+***   check ... depth N, states ... depth N, mc ... depth N
+***                                same, but exploring only the states reachable in at
+***                                most N steps, for programs with an infinite state space,
+***                                e.g. a RUS loop that counts its attempts
 ***   module M                     module for args/state/cond (QSHARP-PROPS by default);
 ***                                M must be loaded beforehand and extend QSHARP-PROPS
 ***   q | quit
-***
-*** Structure taken from MUnit (https://github.com/ariesco/MUnit).
 
 load file.maude
 sload qsharp-props.maude
@@ -140,10 +142,10 @@ fmod QSHARP-PROCESSING is
 
   *** first statement of a stuck (terminal, non-final) state
   op stuckPat : -> Term .
-  eq stuckPat = '`{_`}['__['k:_['K:Stmts], 'isEnd:_['false.Bool], 'R:Comps]] .
+  eq stuckPat = '`{_`}['__['code:_['S:Stmts], 'isEnd:_['false.Bool], 'R:Comps]] .
   op stuckAt : Module ResultTriple? -> String .
   eq stuckAt(M, failure) = "" .
-  eq stuckAt(M, {T', Ty, S}) = "; stuck at: " + pp(M, firstStmt(val(S, 'K:Stmts))) .
+  eq stuckAt(M, {T', Ty, S}) = "; stuck at: " + pp(M, firstStmt(val(S, 'S:Stmts))) .
   op firstStmt : Term -> Term .
   eq firstStmt('__[T, NeTL]) = T .
   eq firstStmt(T) = T [owise] .
@@ -165,9 +167,15 @@ fmod QSHARP-PROCESSING is
   eq isExec('dist_[T]) = true .
   eq isExec('dist_depth_[T, C]) = true .
   eq isExec('states_[T]) = true .
+  eq isExec('states_depth_[T, C]) = true .
+  eq isExec('states_`(_`)in_depth_[T, Ar, Qs, C]) = true .
+  eq isExec('check_ensures_depth_[T, C, T']) = true .
+  eq isExec('check_`(_`)in_ensures_depth_[T, Ar, Qs, C, T']) = true .
   eq isExec('states_`(_`)in_[T, Ar, Qs]) = true .
   eq isExec('dist_`(_`)in_depth_[T, Ar, Qs, C]) = true .
   eq isExec('mc_satisfies_[T, C]) = true .
+  eq isExec('mc_satisfies_depth_[T, C, T']) = true .
+  eq isExec('mc_`(_`)in_satisfies_depth_[T, Ar, Qs, C, T']) = true .
   eq isExec('mc_`(_`)in_satisfies_[T, Ar, Qs, C]) = true .
   eq isExec('dist_`(_`)in_[T, Ar, Qs]) = true .
   eq isExec('check_`(_`)in_ensures_[T, Ar, Qs, C]) = true .
@@ -191,10 +199,32 @@ fmod QSHARP-PROCESSING is
    if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) /\ C1 := bubble(M, C, 'Bool) .
   ceq exec('mc_satisfies_['token[T], C], P, M) = ok(ltl(MC, initRunNP(P, downTerm(T, 'err)), C1))
    if MC := mcModule(M) /\ C1 := bubble(MC, C, 'Formula) .
+  ceq exec('mc_satisfies_depth_['token[T], C, 'token[DT:Term]], P, M) =
+      ok(bltl(M, initRunNP(P, downTerm(T, 'err)), C1, N))
+   if MC := mcModule(M) /\ C1 := bubble(MC, C, 'Formula)
+   /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
+  ceq exec('mc_`(_`)in_satisfies_depth_['token[T], Ar, Qs, C, 'token[DT:Term]], P, M) =
+      ok(bltl(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), C1, N))
+   if MC := mcModule(M) /\ A1 := bubble(MC, Ar, 'ExpList) /\ Q1 := bubble(MC, Qs, 'Qubit)
+   /\ C1 := bubble(MC, C, 'Formula) /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
   ceq exec('mc_`(_`)in_satisfies_['token[T], Ar, Qs, C], P, M) =
       ok(ltl(MC, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), C1))
    if MC := mcModule(M) /\ A1 := bubble(MC, Ar, 'ExpList) /\ Q1 := bubble(MC, Qs, 'Qubit)
    /\ C1 := bubble(MC, C, 'Formula) .
+  ceq exec('check_ensures_depth_['token[T], C, 'token[DT:Term]], P, M) =
+      ok(checkB(M, initRunNP(P, downTerm(T, 'err)), C1, N))
+   if C1 := bubble(M, C, 'Bool) /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
+  ceq exec('check_`(_`)in_ensures_depth_['token[T], Ar, Qs, C, 'token[DT:Term]], P, M) =
+      ok(checkB(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), C1, N))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit) /\ C1 := bubble(M, C, 'Bool)
+   /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
+  ceq exec('states_depth_['token[T], 'token[DT:Term]], P, M) =
+      ok(statesB(M, initRunNP(P, downTerm(T, 'err)), N))
+   if N := rat(string(downTerm(DT:Term, 'err)), 10) .
+  ceq exec('states_`(_`)in_depth_['token[T], Ar, Qs, 'token[DT:Term]], P, M) =
+      ok(statesB(M, initWith('runWithNP, P, downTerm(T, 'err), A1, Q1), N))
+   if A1 := bubble(M, Ar, 'ExpList) /\ Q1 := bubble(M, Qs, 'Qubit)
+   /\ N := rat(string(downTerm(DT:Term, 'err)), 10) .
   eq exec('states_['token[T]], P, M) =
      ok("  reachable states (without probabilities): "
         + string(countStates(M, initRunNP(P, downTerm(T, 'err)), 0), 10) + "\n") .
@@ -302,13 +332,46 @@ fmod QSHARP-PROCESSING is
         else "  in stuck states (error): " + pp(M, Stk) + "\n" fi) .
   op showD : Module Dist -> String .
   eq showD(M, noDist) = "" .
-  eq showD(M, d(V, Pr) && D) = "  result: " + pp(M, V) + "   prob: " + pp(M, Pr) + "\n" + showD(M, D) .
+  ceq showD(M, d(V, Pr) && D) = "  result: " + pp(M, V) + "   prob: " + pp(M, Pr) + "\n" + showD(M, D)
+   if not smaller(M, D, V) .
+
+  *** results in increasing order: numbers by value, the rest by their text
+  op smaller : Module Dist Term -> Bool .
+  eq smaller(M, noDist, V) = false .
+  eq smaller(M, d(T', Pr) && D, V) = lessT(M, T', V) or smaller(M, D, V) .
+  op lessT : Module Term Term -> Bool .
+  eq lessT(M, T, T') =
+     if isNum(T) and isNum(T') then downTerm(T, (0).Int) < downTerm(T', (0).Int)
+     else pp(M, T) < pp(M, T') fi .
+  op isNum : Term -> Bool .
+  eq isNum('0.Zero) = true .
+  eq isNum('-_[T]) = isNum(T) .
+  eq isNum(F['0.Zero]) = F == 's_ or substr(string(F), 0, 3) == "s_^" .
+  eq isNum(T) = false [owise] .
 
   *** ---------- number of reachable states ----------
   op countStates : Module Term Nat -> Nat .
   eq countStates(M, T, N) =
      if metaSearch(M, T, 'C:Config, nil, '*, unbounded, N) == failure then N
      else countStates(M, T, s N) fi .
+
+  *** states reachable in at most MAX steps; the exploration is complete when
+  *** one more step reaches no new state
+  op countStatesB : Module Term Nat Nat -> Nat .
+  eq countStatesB(M, T, MAX, N) =
+     if metaSearch(M, T, 'C:Config, nil, '*, MAX, N) == failure then N
+     else countStatesB(M, T, MAX, s N) fi .
+  op complete : Module Term Nat -> Bool .
+  eq complete(M, T, MAX) = countStatesB(M, T, MAX, 0) == countStatesB(M, T, s MAX, 0) .
+  op boundNote : Module Term Nat -> String .
+  eq boundNote(M, T, MAX) =
+     if complete(M, T, MAX) then "  (the whole state space was explored)\n"
+     else "  (exploration cut at " + string(MAX, 10) + " steps: more states are reachable)\n" fi .
+
+  op statesB : Module Term Nat -> String .
+  eq statesB(M, T, MAX) =
+     "  reachable states in at most " + string(MAX, 10) + " steps (without probabilities): "
+     + string(countStatesB(M, T, MAX, 0), 10) + "\n" + boundNote(M, T, MAX) .
 
   *** ---------- LTL model checking ----------
   *** The working module is joined at the metalevel with QSHARP-MC (stutter and
@@ -317,6 +380,56 @@ fmod QSHARP-PROCESSING is
   eq mcModule(M) = (mod 'QSHARP-LTL-TMP is
                       (including getName(M) .) (including 'QSHARP-MC .)
                       sorts none . none none none none none endm) .
+
+  *** bounded LTL model checking with the standard model checker: the state is
+  *** wrapped as < C, F >, where F is the number of steps left (fuel), frozen so
+  *** that the rules of the semantics do not apply inside it, and each rule of the
+  *** working module is copied to act on the wrapper and spend one unit of fuel.
+  *** A state without fuel loops on itself with the rule cut, and the
+  *** proposition cut holds in it unless it is final.
+  op bltl : Module Term Term Nat -> String .
+  eq bltl(M, T, C, MAX) =
+     $bltl(MAX, getTerm(metaReduce(bmcModule(M), 'modelCheck['<_`,_>[T, upTerm(MAX)], C]))) .
+
+  op bmcModule : Module -> Module .
+  eq bmcModule(M) =
+     (mod 'QSHARP-BMC-TMP is
+        (including getName(M) .) (including 'QSHARP-MC .)
+        sorts none .
+        none
+        ((op '<_`,_> : 'Config 'Nat -> 'State [ctor frozen(1 2)] .)
+         (op 'cut : nil -> 'Prop [ctor] .))
+        none
+        ((ceq '_|=_['<_`,_>['C:Config, 'F:Nat], 'P:Prop] = '_|=_['C:Config, 'P:Prop]
+            if '_=/=_['P:Prop, 'cut.Prop] = 'true.Bool [none] .)
+         (eq '_|=_['<_`,_>['C:Config, '0.Zero], 'cut.Prop] =
+            'not_['_|=_['C:Config, 'ended.Prop]] [none] .)
+         (eq '_|=_['<_`,_>['C:Config, 's_['F:Nat]], 'cut.Prop] = 'false.Bool [none] .))
+        (wrapRls(getRls(upModule(getName(M), true)))
+         (rl '<_`,_>['C:Config, '0.Zero] => '<_`,_>['C:Config, '0.Zero] [label('cut)] .)
+         (rl '<_`,_>['`{_`}['__['isEnd:_['true.Bool], 'R:Comps]], 'F:Nat]
+          => '<_`,_>['`{_`}['__['isEnd:_['true.Bool], 'R:Comps]], 'F:Nat] [label('stutter)] .))
+      endm) .
+
+  op wrapRls : RuleSet -> RuleSet .
+  eq wrapRls(none) = none .
+  eq wrapRls((rl T => T' [AtS] .) RS) =
+     (rl '<_`,_>[T, 's_['$fuel:Nat]] => '<_`,_>[T', '$fuel:Nat] [AtS] .) wrapRls(RS) .
+  eq wrapRls((crl T => T' if Cd [AtS] .) RS) =
+     (crl '<_`,_>[T, 's_['$fuel:Nat]] => '<_`,_>[T', '$fuel:Nat] if Cd [AtS] .) wrapRls(RS) .
+
+  op $bltl : Nat Term -> String .
+  eq $bltl(MAX, 'true.Bool) =
+     "  holds on all paths of at most " + string(MAX, 10) + " steps\n" .
+  eq $bltl(MAX, 'counterexample[T, T']) =
+     "  does NOT hold. Counterexample (applied rules):\n    path:  "
+     + printTokens(trLabels(T)) + "\n    cycle: " + printTokens(trLabels(T')) + "\n"
+     + (if hasCut(trLabels(T')) then "  (the path ends because it was cut at "
+        + string(MAX, 10) + " steps)\n" else "" fi) .
+  eq $bltl(MAX, T) = "  unexpected result\n" [owise] .
+  op hasCut : QidList -> Bool .
+  eq hasCut(nil) = false .
+  eq hasCut(QQ QL) = QQ == 'cut or hasCut(QL) .
 
   op ltl : Module Term Term -> String .
   eq ltl(M, T, C) = $ltl(M, getTerm(metaReduce(M, 'modelCheck[T, C]))) .
@@ -357,7 +470,15 @@ fmod QSHARP-PROCESSING is
   *** so a condition that cannot be evaluated is never reported as holding
   op check : Module Term Term -> String .
   eq check(M, T, C) =
-     $check(M, metaSearch(M, T, finalPat, '_=/=_[C, 'true.Bool] = 'true.Bool, '!, unbounded, 0)) .
+     $check(M, metaSearch(M, T, finalPat, '_or_['_==_['RES:Value, 'assertionFailed.Value], '_=/=_[C, 'true.Bool]] = 'true.Bool, '!, unbounded, 0)) .
+  op checkB : Module Term Term Nat -> String .
+  eq checkB(M, T, C, MAX) =
+     $checkB(M, T, MAX, metaSearch(M, T, finalPat, '_or_['_==_['RES:Value, 'assertionFailed.Value], '_=/=_[C, 'true.Bool]] = 'true.Bool, '!, MAX, 0)) .
+  op $checkB : Module Term Nat ResultTriple? -> String .
+  eq $checkB(M, T, MAX, failure) =
+     "  holds in all final states reached in at most " + string(MAX, 10) + " steps\n"
+     + boundNote(M, T, MAX) .
+  eq $checkB(M, T, MAX, R3:ResultTriple) = $check(M, R3:ResultTriple) .
   op $check : Module ResultTriple? -> String .
   eq $check(M, failure) = "  holds in all final states\n" .
   eq $check(M, {T', Ty, S}) =

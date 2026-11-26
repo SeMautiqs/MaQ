@@ -1,4 +1,4 @@
-// Seeded faults (RQ3): variants of the programs of the validation with one
+// Seeded faults: variants of the programs of the validation with one
 // injected bug each. The commands that detect them are in validation/faults.txt.
 namespace Faults {
     // F1: teleportation without the Z correction

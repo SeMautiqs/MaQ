@@ -34,7 +34,7 @@ mod QSHARP-SEMANTICS is
   *** a stack: the innermost binding comes first
   op _&_ : Env Env -> Env [ctor assoc id: noEnv prec 45] .
 
-  vars Q Q' : Qid . vars V V' : Value . vars E E1 E2 : Exp . vars EL EL' : ExpList .
+  vars Q Q' : Qid . vars V V' : Value . vars E E1 E2 E3 : Exp . vars EL EL' : ExpList .
   vars Env Env' Old : Env . vars I1 I2 : Int . vars N N1 N2 N3 : Nat .
 
   *** innermost binding of a variable; an unbound name denotes an operation
@@ -77,6 +77,27 @@ mod QSHARP-SEMANTICS is
   eq (false).QBool and E = (false).QBool .
   eq (true).QBool or E = (true).QBool .
   eq (false).QBool or E = E .
+
+  *** arithmetic and comparisons on Doubles, exact as r + s pi; a product
+  *** needs one factor without pi, and a quotient a divisor without pi
+  vars R1 R2 S1 S2 : Rat .
+  eq dbl(R1, S1) + dbl(R2, S2) = dbl(R1 + R2, S1 + S2) .
+  eq plus(dbl(R1, S1), dbl(R2, S2)) = dbl(R1 + R2, S1 + S2) .
+  eq _-_(dbl(R1, S1), dbl(R2, S2)) = dbl(R1 + (- R2), S1 + (- S2)) .
+  eq -_(dbl(R1, S1)) = dbl(- R1, - S1) .
+  eq dbl(R1, 0) * dbl(R2, S2) = dbl(R1 * R2, R1 * S2) .
+  ceq dbl(R1, 0) quo dbl(R2, 0) = dbl(R1 / R2, 0) if R2 =/= 0 .
+  ceq dbl(R1, S1) quo dbl(R2, 0) = dbl(R1 / R2, S1 / R2) if R2 =/= 0 .
+  *** comparisons use a rational approximation of pi when the multiples differ
+  op apx : Rat Rat -> Rat .
+  eq apx(R1, S1) = R1 + S1 * (314159265358979 / 100000000000000) .
+  eq dbl(R1, S1) lt dbl(R2, S2) = tb(apx(R1, S1) < apx(R2, S2)) .
+  eq dbl(R1, S1) le dbl(R2, S2) = tb(apx(R1, S1) <= apx(R2, S2)) .
+  eq dbl(R1, S1) gt dbl(R2, S2) = tb(apx(R1, S1) > apx(R2, S2)) .
+  eq dbl(R1, S1) ge dbl(R2, S2) = tb(apx(R1, S1) >= apx(R2, S2)) .
+  eq ev(toD(E), Env) = toDbl(ev(E, Env)) .
+  op toDbl : Exp -> Exp .
+  eq toDbl(I1) = dbl(I1, 0) .
 
   op ev : Exp Env -> Exp .
   eq ev(V, Env) = V .
@@ -131,6 +152,18 @@ mod QSHARP-SEMANTICS is
   eq ev(slice(E, E1, E2), Env) = slc(ev(E, Env), ev(E1, Env), ev(E2, Env)) .
   eq ev(sliceFrom(E, E1), Env) = slcFrom(ev(E, Env), ev(E1, Env)) .
   eq ev(sliceTo(E, E2), Env) = slc(ev(E, Env), 0, ev(E2, Env)) .
+  eq ev(sliceStep(E, E1, E2, E3), Env) = slcStep(ev(E, Env), ev(E1, Env), ev(E2, Env), ev(E3, Env)) .
+  eq ev(rep(E1, E2), Env) = arr(repl(ev(E1, Env), ev(E2, Env))) .
+  op slcStep : Exp Exp Exp Exp -> Exp .
+  ceq slcStep(arr(EL), N1, s N, N2) = arr(stepL(drop(EL, N1), s N, sd(N2 + 1, N1)))
+   if N1 <= N2 .
+  op stepL : ExpList Nat Nat -> ExpList .   *** every k-th element of the first m
+  eq stepL(EL, s N, 0) = noE .
+  eq stepL(noE, s N, N2) = noE .
+  eq stepL((E, EL), s N, s N2) = E, stepL(drop(EL, N), s N, sd(N2, N)) .
+  op repl : Exp Nat -> ExpList .
+  eq repl(E, 0) = noE .
+  eq repl(E, s N) = E, repl(E, N) .
   op slc : Exp Exp Exp -> Exp .
   op slcFrom : Exp Exp -> Exp .
   eq slc(arr(EL), N1, N2) = arr(take(drop(EL, N1), sd(N2 + 1, N1))) .
@@ -162,11 +195,12 @@ mod QSHARP-SEMANTICS is
 
   *** parameter passing
   op bindP : Params ExpList -> Env .
-  var T : Type . var Ps : Params .
+  var T : Type . vars Ps Ps' : Params .
   eq bindP(noP, noE) = noEnv .
   eq bindP((Q : T, Ps), (V, EL)) = (Q |-> V) & bindP(Ps, EL) .
+  eq bindP((ptup(Ps'), Ps), (tup(EL'), EL)) = bindP(Ps', EL') & bindP(Ps, EL) .
 
-  *** internal items of the continuation
+  *** internal items of the code to be executed
   op block : Stmts -> Stmt [ctor] .
   op restore : Env -> Stmt [ctor] .
   op frame : Env -> Stmt [ctor] .
@@ -187,7 +221,7 @@ mod QSHARP-SEMANTICS is
   op none : -> Comps [ctor] .
   op __ : Comps Comps -> Comps [ctor assoc comm id: none] .
   op qstate:_ : Qubit -> Comp [ctor] .
-  op k:_ : Stmts -> Comp [ctor] .
+  op code:_ : Stmts -> Comp [ctor] .
   op env:_ : Env -> Comp [ctor] .
   op decls:_ : Decls -> Comp [ctor] .
   op next:_ : Nat -> Comp [ctor] .
@@ -196,7 +230,7 @@ mod QSHARP-SEMANTICS is
   op isEnd:_ : Bool -> Comp [ctor] .
   op {_} : Comps -> Config [ctor] .
 
-  vars K : Stmts . vars Ss Ss1 Ss2 : Stmts . var St : Stmt . var R : Comps .
+  vars S : Stmts . vars Ss Ss1 Ss2 : Stmts . var St : Stmt . var R : Comps .
   var C : Call . vars QS QS' : Qubit . vars Pr Pr' : Prob . var D : Decls .
   var B : Bool .
 
@@ -207,7 +241,7 @@ mod QSHARP-SEMANTICS is
   *** running an operation with arguments, initial state and first free index
   op runWith : Decls Qid ExpList Qubit Nat -> Config .
   eq runWith(D, Q, EL, QS, N) =
-     {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
+     {(qstate: QS) (code: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
       (next: N) (prob: 1) (result: unit) (isEnd: false)} .
 
   *** Mode without probabilities: prob: is fixed to untracked. With repeat-until
@@ -217,98 +251,104 @@ mod QSHARP-SEMANTICS is
   op runWithNP : Decls Qid ExpList Qubit Nat -> Config .
   eq runNP(D, Q) = runWithNP(D, Q, noE, emp, 0) .
   eq runWithNP(D, Q, EL, QS, N) =
-     {(qstate: QS) (k: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
+     {(qstate: QS) (code: (invoke(Q(EL)) outRes)) (env: noEnv) (decls: D)
       (next: N) (prob: untracked) (result: unit) (isEnd: false)} .
 
   *** ---------------- statements ----------------
-  eq {(k: ((let Q = E ;) K)) (env: Env) R}
-   = {(k: K) (env: ((Q |-> ev(E, Env)) & Env)) R} .
-  eq {(k: ((mutable Q = E ;) K)) (env: Env) R}
-   = {(k: K) (env: ((Q |-> ev(E, Env)) & Env)) R} .
-  eq {(k: ((set Q = E ;) K)) (env: Env) R}
-   = {(k: K) (env: upd(Env, Q, ev(E, Env))) R} .
+  eq {(code: ((let Q = E ;) S)) (env: Env) R}
+   = {(code: S) (env: ((Q |-> ev(E, Env)) & Env)) R} .
+  eq {(code: ((mutable Q = E ;) S)) (env: Env) R}
+   = {(code: S) (env: ((Q |-> ev(E, Env)) & Env)) R} .
+  eq {(code: ((set Q = E ;) S)) (env: Env) R}
+   = {(code: S) (env: upd(Env, Q, ev(E, Env))) R} .
 
   *** calls at the root of a statement
-  eq {(k: ((let Q = C ;) K)) (env: Env) R}
-   = {(k: (invoke(evC(C, Env)) letRes(Q) K)) (env: Env) R} .
-  eq {(k: ((mutable Q = C ;) K)) (env: Env) R}
-   = {(k: (invoke(evC(C, Env)) letRes(Q) K)) (env: Env) R} .
-  eq {(k: ((set Q = C ;) K)) (env: Env) R}
-   = {(k: (invoke(evC(C, Env)) setRes(Q) K)) (env: Env) R} .
-  eq {(k: ((C ;) K)) (env: Env) R}
-   = {(k: (invoke(evC(C, Env)) drop K)) (env: Env) R} .
-  eq {(k: ((return C ;) K)) (env: Env) R}
-   = {(k: (invoke(evC(C, Env)) retRes K)) (env: Env) R} .
+  eq {(code: ((let Q = C ;) S)) (env: Env) R}
+   = {(code: (invoke(evC(C, Env)) letRes(Q) S)) (env: Env) R} .
+  eq {(code: ((mutable Q = C ;) S)) (env: Env) R}
+   = {(code: (invoke(evC(C, Env)) letRes(Q) S)) (env: Env) R} .
+  eq {(code: ((set Q = C ;) S)) (env: Env) R}
+   = {(code: (invoke(evC(C, Env)) setRes(Q) S)) (env: Env) R} .
+  eq {(code: ((C ;) S)) (env: Env) R}
+   = {(code: (invoke(evC(C, Env)) drop S)) (env: Env) R} .
+  eq {(code: ((return C ;) S)) (env: Env) R}
+   = {(code: (invoke(evC(C, Env)) retRes S)) (env: Env) R} .
 
   *** collecting the value returned by a call
-  eq {(k: (val(V) letRes(Q) K)) (env: Env) R} = {(k: K) (env: ((Q |-> V) & Env)) R} .
-  eq {(k: (val(V) setRes(Q) K)) (env: Env) R} = {(k: K) (env: upd(Env, Q, V)) R} .
-  eq {(k: (val(V) drop K)) R} = {(k: K) R} .
-  eq {(k: (val(V) retRes K)) R} = {(k: ((return V ;) K)) R} .
-  eq {(k: (val(V) outRes K)) (result: V') (isEnd: B) R}
-   = {(k: K) (result: V) (isEnd: true) R} .
+  eq {(code: (val(V) letRes(Q) S)) (env: Env) R} = {(code: S) (env: ((Q |-> V) & Env)) R} .
+  eq {(code: (val(V) setRes(Q) S)) (env: Env) R} = {(code: S) (env: upd(Env, Q, V)) R} .
+  eq {(code: (val(V) drop S)) R} = {(code: S) R} .
+  eq {(code: (val(V) retRes S)) R} = {(code: ((return V ;) S)) R} .
+  eq {(code: (val(V) outRes S)) (result: V') (isEnd: B) R}
+   = {(code: S) (result: V) (isEnd: true) R} .
 
-  *** return: the continuation is discarded up to the call frame, first
+  *** return: the rest of the operation is discarded up to the call frame, first
   *** performing the pending qubit releases
-  eq {(k: ((return E ;) frame(Old) K)) (env: Env) R}
-   = {(k: (val(ev(E, Env)) K)) (env: Old) R} .
-  eq {(k: ((return E ;) release(N) K)) R} = {(k: (release(N) (return E ;) K)) R} .
-  eq {(k: ((return E ;) restore(Old) K)) R} = {(k: ((return E ;) K)) R} .
-  eq {(k: ((return E ;) St K)) R} = {(k: ((return E ;) K)) R} [owise] .
+  eq {(code: ((return E ;) frame(Old) S)) (env: Env) R}
+   = {(code: (val(ev(E, Env)) S)) (env: Old) R} .
+  eq {(code: ((return E ;) release(N) S)) R} = {(code: (release(N) (return E ;) S)) R} .
+  eq {(code: ((return E ;) restore(Old) S)) R} = {(code: ((return E ;) S)) R} .
+  eq {(code: ((return E ;) St S)) R} = {(code: ((return E ;) S)) R} [owise] .
 
   *** end of the body without return: unit is returned
-  eq {(k: (frame(Old) K)) (env: Env) R} = {(k: (val(unit) K)) (env: Old) R} .
+  eq {(code: (frame(Old) S)) (env: Env) R} = {(code: (val(unit) S)) (env: Old) R} .
 
   *** control
-  eq {(k: ((if E { Ss1 } else { Ss2 }) K)) (env: Env) R}
-   = {(k: (branch(ev(E, Env), Ss1, Ss2) K)) (env: Env) R} .
+  *** assertions: a false condition ends the execution, with the result
+  *** assertionFailed, which check, dist, and mc report
+  eq {(code: ((assert E ;) S)) (env: Env) (result: V) (isEnd: B) R}
+   = if ev(E, Env) == (true).QBool then {(code: S) (env: Env) (result: V) (isEnd: B) R}
+     else {(code: skip) (env: Env) (result: assertionFailed) (isEnd: true) R} fi .
+
+  eq {(code: ((if E { Ss1 } else { Ss2 }) S)) (env: Env) R}
+   = {(code: (branch(ev(E, Env), Ss1, Ss2) S)) (env: Env) R} .
   eq branch((true).QBool, Ss1, Ss2) = block(Ss1) .
   eq branch((false).QBool, Ss1, Ss2) = block(Ss2) .
 
-  eq {(k: ((for Q in E1 .. E2 { Ss }) K)) (env: Env) R}
-   = {(k: (forIter(Q, ev(E1, Env), ev(E2, Env), Ss) K)) (env: Env) R} .
+  eq {(code: ((for Q in E1 .. E2 { Ss }) S)) (env: Env) R}
+   = {(code: (forIter(Q, ev(E1, Env), ev(E2, Env), Ss) S)) (env: Env) R} .
   eq forIter(Q, I1, I2, Ss) =
      if I1 <= I2 then block((let Q = I1 ;) Ss) forIter(Q, I1 + 1, I2, Ss) else skip fi .
 
-  eq {(k: ((for Q in E { Ss }) K)) (env: Env) R}
-   = {(k: (forArr(Q, ev(E, Env), Ss) K)) (env: Env) R} .
+  eq {(code: ((for Q in E { Ss }) S)) (env: Env) R}
+   = {(code: (forArr(Q, ev(E, Env), Ss) S)) (env: Env) R} .
   eq forArr(Q, arr((V, EL)), Ss) = block((let Q = V ;) Ss) forArr(Q, arr(EL), Ss) .
   eq forArr(Q, arr(noE), Ss) = skip .
 
   *** while: one iteration at a time, without nesting blocks
   var W : Stmt .
-  eq {(k: ((while E { Ss }) K)) (env: Env) R}
-   = {(k: (wloop(ev(E, Env), Ss, (while E { Ss })) K)) (env: Env) R} .
+  eq {(code: ((while E { Ss }) S)) (env: Env) R}
+   = {(code: (wloop(ev(E, Env), Ss, (while E { Ss })) S)) (env: Env) R} .
   eq wloop((true).QBool, Ss, W) = block(Ss) W .
   eq wloop((false).QBool, Ss, W) = skip .
 
   *** repeat-until-fixup: the condition and the fixup see the body variables.
   *** If the condition fails, the fixup is executed and the repeat is placed
-  *** again AFTER the restore of the block, so the continuation does not grow.
-  eq {(k: ((repeat { Ss1 } until E fixup { Ss2 }) K)) (env: Env) R}
-   = {(k: (Ss1 rptChk(E, Ss2, (repeat { Ss1 } until E fixup { Ss2 })) restore(Env) K))
+  *** again AFTER the restore of the block, so the code does not grow.
+  eq {(code: ((repeat { Ss1 } until E fixup { Ss2 }) S)) (env: Env) R}
+   = {(code: (Ss1 rptChk(E, Ss2, (repeat { Ss1 } until E fixup { Ss2 })) restore(Env) S))
       (env: Env) R} .
-  eq {(k: (rptChk(E, Ss, W) K)) (env: Env) R}
-   = {(k: rpt(ev(E, Env), Ss, W, K)) (env: Env) R} .
+  eq {(code: (rptChk(E, Ss, W) S)) (env: Env) R}
+   = {(code: rpt(ev(E, Env), Ss, W, S)) (env: Env) R} .
   op rpt : Exp Stmts Stmt Stmts -> Stmts .
-  eq rpt((true).QBool, Ss, W, K) = K .
-  eq rpt((false).QBool, Ss, W, K) = Ss afterBlock(W, K) .
+  eq rpt((true).QBool, Ss, W, S) = S .
+  eq rpt((false).QBool, Ss, W, S) = Ss afterBlock(W, S) .
   op afterBlock : Stmt Stmts -> Stmts .
-  eq afterBlock(W, restore(Old) K) = restore(Old) W K .
-  eq afterBlock(W, St K) = St afterBlock(W, K) [owise] .
+  eq afterBlock(W, restore(Old) S) = restore(Old) W S .
+  eq afterBlock(W, St S) = St afterBlock(W, S) [owise] .
 
   *** blocks and scopes
-  eq {(k: (block(Ss) K)) (env: Env) R} = {(k: (Ss restore(Env) K)) (env: Env) R} .
-  eq {(k: (restore(Old) K)) (env: Env) R} = {(k: K) (env: restrict(Env, Old)) R} .
+  eq {(code: (block(Ss) S)) (env: Env) R} = {(code: (Ss restore(Env) S)) (env: Env) R} .
+  eq {(code: (restore(Old) S)) (env: Env) R} = {(code: S) (env: restrict(Env, Old)) R} .
 
   *** qubit allocation and release
-  eq {(qstate: QS) (k: ((use Q = Qubit() ;) K)) (env: Env) (next: N) R}
-   = {(qstate: (QS (q[N]: |0>))) (k: insRel(N, K)) (env: ((Q |-> qb(N)) & Env))
+  eq {(qstate: QS) (code: ((use Q = Qubit() ;) S)) (env: Env) (next: N) R}
+   = {(qstate: (QS (q[N]: |0>))) (code: insRel(N, S)) (env: ((Q |-> qb(N)) & Env))
       (next: (N + 1)) R} .
 
   var NN : Nat .
-  ceq {(qstate: QS) (k: ((use Q = Qubit[E] ;) K)) (env: Env) (next: N) R}
-   = {(qstate: (QS newQs(N, NN))) (k: insRels(N, NN, K))
+  ceq {(qstate: QS) (code: ((use Q = Qubit[E] ;) S)) (env: Env) (next: N) R}
+   = {(qstate: (QS newQs(N, NN))) (code: insRels(N, NN, S))
       (env: ((Q |-> arr(qbs(N, NN))) & Env)) (next: (N + NN)) R}
    if NN := ev(E, Env) .
 
@@ -319,19 +359,19 @@ mod QSHARP-SEMANTICS is
   eq qbs(N, 0) = noE .
   eq qbs(N, s NN) = qb(N), qbs(s N, NN) .
   op insRels : Nat Nat Stmts -> Stmts .
-  eq insRels(N, 0, K) = K .
-  eq insRels(N, s NN, K) = insRels(s N, NN, insRel(N, K)) .
+  eq insRels(N, 0, S) = S .
+  eq insRels(N, s NN, S) = insRels(s N, NN, insRel(N, S)) .
 
   op insRel : Nat Stmts -> Stmts .
-  eq insRel(N, restore(Old) K) = release(N) restore(Old) K .
-  eq insRel(N, frame(Old) K) = release(N) frame(Old) K .
+  eq insRel(N, restore(Old) S) = release(N) restore(Old) S .
+  eq insRel(N, frame(Old) S) = release(N) frame(Old) S .
   eq insRel(N, skip) = release(N) .
-  eq insRel(N, St K) = St insRel(N, K) [owise] .
+  eq insRel(N, St S) = St insRel(N, S) [owise] .
 
   *** on release, next becomes the first free index according to the live qubits;
   *** this way states are canonical and loops with use have a finite graph
-  eq {(qstate: ((q[N]: |0>) QS)) (k: (release(N) K)) (next: N1) R}
-   = {(qstate: QS) (k: K) (next: nextFree(QS)) R} .
+  eq {(qstate: ((q[N]: |0>) QS)) (code: (release(N) S)) (next: N1) R}
+   = {(qstate: QS) (code: S) (next: nextFree(QS)) R} .
 
   var NL : NatList . var Vc : Vector .
   op nextFree : Qubit -> Nat .
@@ -340,24 +380,24 @@ mod QSHARP-SEMANTICS is
   eq nextFree((q[NL]: Vc) QS) = max(s maxL(NL), nextFree(QS)) .
   eq maxL(N) = N .
   eq maxL(__(N, NL)) = max(N, maxL(NL)) .
-  eq {(k: (release(N) K)) R} = {(k: K) R} [owise] .
+  eq {(code: (release(N) S)) R} = {(code: S) R} [owise] .
 
   *** calls to user-defined operations
-  eq {(k: (invoke(Q(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
-   = {(k: (Ss frame(Env) K)) (env: bindP(Ps, EL))
+  eq {(code: (invoke(Q(EL)) S)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(code: (Ss frame(Env) S)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
 
   *** intrinsics that reduce to other statements
-  eq {(k: (invoke('ResetAll(arr((V, EL)))) K)) R}
-   = {(k: (('Reset(V) ;) invoke('ResetAll(arr(EL))) K)) R} .
-  eq {(k: (invoke('ResetAll(arr(noE))) K)) R} = {(k: (val(unit) K)) R} .
+  eq {(code: (invoke('ResetAll(arr((V, EL)))) S)) R}
+   = {(code: (('Reset(V) ;) invoke('ResetAll(arr(EL))) S)) R} .
+  eq {(code: (invoke('ResetAll(arr(noE))) S)) R} = {(code: (val(unit) S)) R} .
 
   *** ---------------- functors and within/apply ----------------
   var Cl : Callable . vars Cs Cs' Args : ExpList . var Ss3 : Stmts .
 
   *** within { A } apply { B }  =  A ; B ; Adjoint A, each one in its own scope
-  eq {(k: ((within { Ss1 } apply { Ss2 }) K)) R}
-   = {(k: (block(Ss1) block(Ss2) block(adj(Ss1)) K)) R} .
+  eq {(code: ((within { Ss1 } apply { Ss2 }) S)) R}
+   = {(code: (block(Ss1) block(Ss2) block(adj(Ss1)) S)) R} .
 
   *** adjoint of a body: reverse order and each call with Adjoint; classical
   *** bindings and initial allocations are kept in front
@@ -379,12 +419,12 @@ mod QSHARP-SEMANTICS is
   op forDown : Qid Exp Exp Stmts -> Stmt [ctor] .
   op forArrDown : Qid Exp Stmts -> Stmt [ctor] .
   op forIterDown : Qid Int Int Stmts -> Stmt [ctor] .
-  eq {(k: (forDown(Q, E1, E2, Ss) K)) (env: Env) R}
-   = {(k: (forIterDown(Q, ev(E1, Env), ev(E2, Env), Ss) K)) (env: Env) R} .
+  eq {(code: (forDown(Q, E1, E2, Ss) S)) (env: Env) R}
+   = {(code: (forIterDown(Q, ev(E1, Env), ev(E2, Env), Ss) S)) (env: Env) R} .
   eq forIterDown(Q, I1, I2, Ss) =
      if I1 >= I2 then block((let Q = I1 ;) Ss) forIterDown(Q, _-_(I1, 1), I2, Ss) else skip fi .
-  eq {(k: (forArrDown(Q, E, Ss) K)) (env: Env) R}
-   = {(k: (forArr(Q, revArr(ev(E, Env)), Ss) K)) (env: Env) R} .
+  eq {(code: (forArrDown(Q, E, Ss) S)) (env: Env) R}
+   = {(code: (forArr(Q, revArr(ev(E, Env)), Ss) S)) (env: Env) R} .
   op revArr : Exp -> Exp .
   op revL : ExpList -> ExpList .
   eq revArr(arr(EL)) = arr(revL(EL)) .
@@ -406,17 +446,48 @@ mod QSHARP-SEMANTICS is
   eq ctlS(within { Ss1 } apply { Ss2 }, Cs) = within { Ss1 } apply { ctl(Ss2, Cs) } .
   eq ctlS(St, Cs) = St [owise] .
 
+  *** specializations: an explicit one is used when declared; otherwise it is
+  *** generated from the body (adjoint) or from the other ones (controlled
+  *** adjoint), following the Q# defaults
+  var Qc : Qid .
+  op adjOf : Qid Stmts Decls -> Stmts .
+  eq adjOf(Q, Ss, (adjBody(Q, Ss1) D)) = Ss1 .
+  eq adjOf(Q, Ss, (adjSelf(Q) D)) = Ss .
+  eq adjOf(Q, Ss, D) = adj(Ss) [owise] .
+
+  op ctlOf : Qid Stmts ExpList Decls -> Stmts .
+  eq ctlOf(Q, Ss, Cs, (ctlBody(Q, Qc, Ss1) D)) = (let Qc = arr(Cs) ;) Ss1 .
+  eq ctlOf(Q, Ss, Cs, D) = ctl(Ss, Cs) [owise] .
+
+  ops hasAdj hasCtl : Qid Decls -> Bool .
+  eq hasAdj(Q, (adjBody(Q, Ss1) D)) = true .
+  eq hasAdj(Q, (adjSelf(Q) D)) = true .
+  eq hasAdj(Q, D) = false [owise] .
+  eq hasCtl(Q, (ctlBody(Q, Qc, Ss1) D)) = true .
+  eq hasCtl(Q, D) = false [owise] .
+
+  *** an explicit adjoint is distributed over the controls; otherwise an
+  *** explicit controlled body is inverted
+  op ctlAdjOf : Qid Stmts ExpList Decls -> Stmts .
+  eq ctlAdjOf(Q, Ss, Cs, (ctlAdjBody(Q, Qc, Ss1) D)) = (let Qc = arr(Cs) ;) Ss1 .
+  eq ctlAdjOf(Q, Ss, Cs, (ctlAdjSelf(Q) D)) = ctlOf(Q, Ss, Cs, (ctlAdjSelf(Q) D)) .
+  eq ctlAdjOf(Q, Ss, Cs, (ctlAdjInvert(Q) D)) = adj(ctlOf(Q, Ss, Cs, (ctlAdjInvert(Q) D))) .
+  eq ctlAdjOf(Q, Ss, Cs, (ctlAdjDistribute(Q) D)) = ctl(adjOf(Q, Ss, (ctlAdjDistribute(Q) D)), Cs) .
+  eq ctlAdjOf(Q, Ss, Cs, D) =
+     if hasCtl(Q, D) and not hasAdj(Q, D) then adj(ctlOf(Q, Ss, Cs, D))
+     else ctl(adjOf(Q, Ss, D), Cs) fi [owise] .
+
   *** invocation of user-defined operations with functors
-  eq {(k: (invoke((Adjoint Q)(EL)) K)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
-   = {(k: (adj(Ss) frame(Env) K)) (env: bindP(Ps, EL))
+  eq {(code: (invoke((Adjoint Q)(EL)) S)) (env: Env) (decls: ((operation Q(Ps) : T { Ss }) D)) R}
+   = {(code: (adjOf(Q, Ss, D) frame(Env) S)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
-  eq {(k: (invoke((Controlled Q)(arr(Cs), EL)) K)) (env: Env)
+  eq {(code: (invoke((Controlled Q)(arr(Cs), EL)) S)) (env: Env)
       (decls: ((operation Q(Ps) : T { Ss }) D)) R}
-   = {(k: (ctl(Ss, Cs) frame(Env) K)) (env: bindP(Ps, EL))
+   = {(code: (ctlOf(Q, Ss, Cs, D) frame(Env) S)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
-  eq {(k: (invoke((Controlled Adjoint Q)(arr(Cs), EL)) K)) (env: Env)
+  eq {(code: (invoke((Controlled Adjoint Q)(arr(Cs), EL)) S)) (env: Env)
       (decls: ((operation Q(Ps) : T { Ss }) D)) R}
-   = {(k: (ctl(adj(Ss), Cs) frame(Env) K)) (env: bindP(Ps, EL))
+   = {(code: (ctlAdjOf(Q, Ss, Cs, D) frame(Env) S)) (env: bindP(Ps, EL))
       (decls: ((operation Q(Ps) : T { Ss }) D)) R} .
 
   *** Controlled of an operation with several arguments receives them as a tuple
@@ -448,9 +519,9 @@ mod QSHARP-SEMANTICS is
   eq invoke((Controlled 'CCNOT)(arr(Cs), Wa, Wb, Wc))
    = invoke((Controlled 'X)(arr((Cs, Wa, Wb)), Wc)) .
   *** SWAP = CNOT(a,b) CNOT(b,a) CNOT(a,b)
-  eq {(k: (invoke((Controlled 'SWAP)(arr(Cs), Wa, Wb)) K)) R}
-   = {(k: (((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) ((Controlled 'CNOT)(arr(Cs), Wb, Wa) ;)
-           ((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) val(unit) K)) R} .
+  eq {(code: (invoke((Controlled 'SWAP)(arr(Cs), Wa, Wb)) S)) R}
+   = {(code: (((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) ((Controlled 'CNOT)(arr(Cs), Wb, Wa) ;)
+           ((Controlled 'CNOT)(arr(Cs), Wa, Wb) ;) val(unit) S)) R} .
 
   *** ---------------- generic applier of controlled gates ----------------
   *** Single-qubit U on target T with controls Cs (all in |1>):
@@ -468,53 +539,108 @@ mod QSHARP-SEMANTICS is
   eq idxs(noE) = nil .
   eq idxs((qb(N), EL)) = __(N, idxs(EL)) .
 
+  *** ---------------- rotations ----------------
+  *** Rx, Ry, Rz, R1, and R(P, theta, q) for angles theta = k pi/4. With
+  *** amplitudes in Z[w], R1 is exact for every k, Rx and Ry need k even,
+  *** i.e. theta = m pi/2, and Rz needs k even under Controlled; without controls an
+  *** odd k is applied up to its global phase, diag(1, w^k).
+  op isRot : Qid -> Bool .
+  eq isRot(Q) = Q == 'Rx or Q == 'Ry or Q == 'Rz or Q == 'R1 .
+  op pauliRot : Qid ~> Qid .
+  eq pauliRot('PauliX) = 'Rx .  eq pauliRot('PauliY) = 'Ry .  eq pauliRot('PauliZ) = 'Rz .
+
+  *** k mod 16 such that theta = k pi/4, if theta is such a multiple
+  op quarters : Value ~> Nat .
+  ceq quarters(dbl(0, S1)) = (((4 * S1) rem 16) + 16) rem 16 if (4 * S1) :: Int .
+
+  op rotGate : Qid Value Bool ~> Gate .   *** gate, angle, controlled?
+  ceq rotGate(Q, V, B:Bool) = rg(Q, N, B:Bool) if N := quarters(V) .
+  op rg : Qid Nat Bool ~> Gate .
+  eq rg('R1, N, B:Bool) = g((1,0,0,0), (0,0,0,0), (0,0,0,0), wPow(N rem 8), 0) .
+  ceq rg('Rz, N, B:Bool) = g(wPow(sd(8, (N quo 2) rem 8) rem 8), (0,0,0,0), (0,0,0,0), wPow((N quo 2) rem 8), 0)
+   if N rem 2 == 0 .
+  ceq rg('Rz, N, false) = g((1,0,0,0), (0,0,0,0), (0,0,0,0), wPow(N rem 8), 0) if N rem 2 == 1 .
+  ceq rg('Rx, N, B:Bool) = g(cs(N quo 2), (0,0,-1,0) * sn(N quo 2), (0,0,-1,0) * sn(N quo 2), cs(N quo 2), 1)
+   if N rem 2 == 0 .
+  ceq rg('Ry, N, B:Bool) = g(cs(N quo 2), - sn(N quo 2), sn(N quo 2), cs(N quo 2), 1)
+   if N rem 2 == 0 .
+  *** Sqrt(2) cos(m pi/4) and Sqrt(2) sin(m pi/4), in Z[w]
+  ops cs sn : Nat -> Cpx .
+  eq cs(N) = if N == 0 then r2 else if N == 1 or N == 7 then (1,0,0,0)
+             else if N == 2 or N == 6 then (0,0,0,0) else if N == 4 then (0,-1,0,1)
+             else (-1,0,0,0) fi fi fi fi .
+  eq sn(N) = cs((N + 6) rem 8) .
+
+  *** adjoints negate the angle
+  ceq invoke((Adjoint Q)(dbl(R1, S1), Wa)) = invoke(Q(dbl(- R1, - S1), Wa)) if isRot(Q) .
+  ceq invoke((Controlled Adjoint Q)(arr(Cs), dbl(R1, S1), Wa)) = invoke((Controlled Q)(arr(Cs), dbl(- R1, - S1), Wa))
+   if isRot(Q) .
+  eq invoke((Adjoint 'R)(Wa, dbl(R1, S1), Wb)) = invoke('R(Wa, dbl(- R1, - S1), Wb)) .
+  eq invoke((Controlled Adjoint 'R)(arr(Cs), Wa, dbl(R1, S1), Wb)) = invoke((Controlled 'R)(arr(Cs), Wa, dbl(- R1, - S1), Wb)) .
+  *** R(P, theta, q)
+  eq invoke('R(opv('PauliI), V, Wa)) = invoke('I(Wa)) .   *** a global phase
+  eq invoke('R(opv(Q), V, Wa)) = invoke(pauliRot(Q)(V, Wa)) [owise] .
+  *** under Controlled, the global phase of R(PauliI, theta) is the phase
+  *** e^{-i theta/2} on the controls: R1(-theta/2) on the last control
+  eq invoke((Controlled 'R)(arr((Cs, Wc)), opv('PauliI), dbl(R1, S1), Wa))
+   = invoke((Controlled 'R1)(arr(Cs), dbl(- (R1 / 2), - (S1 / 2)), Wc)) .
+  ceq invoke((Controlled 'R)(arr(Cs), opv(Q), V, Wa)) = invoke((Controlled Q')(arr(Cs), V, Wa))
+   if Q' := pauliRot(Q) .
+
+  crl [Rot] : {(qstate: QS) (code: (invoke(Q(V, qb(N))) S)) R}
+           => {(qstate: applyU(QS, nil, N, U)) (code: (val(unit) S)) R}
+           if isRot(Q) /\ U := rotGate(Q, V, false) .
+  crl [CtlRot] : {(qstate: QS) (code: (invoke((Controlled Q)(arr(Cs), V, qb(N))) S)) R}
+           => {(qstate: applyU(QS, idxs(Cs), N, U)) (code: (val(unit) S)) R}
+           if Cs =/= noE /\ isRot(Q) /\ U := rotGate(Q, V, true) .
+
   *** rules: single-qubit gates (T, Sdg, Tdg) and controlled versions
-  rl [T] : {(qstate: QS) (k: (invoke('T(qb(N))) K)) R}
-        => {(qstate: applyU(QS, nil, N, gT)) (k: (val(unit) K)) R} .
-  rl [Sdg] : {(qstate: QS) (k: (invoke('Sdg(qb(N))) K)) R}
-          => {(qstate: applyU(QS, nil, N, gSdg)) (k: (val(unit) K)) R} .
-  rl [Tdg] : {(qstate: QS) (k: (invoke('Tdg(qb(N))) K)) R}
-          => {(qstate: applyU(QS, nil, N, gTdg)) (k: (val(unit) K)) R} .
-  crl [Controlled] : {(qstate: QS) (k: (invoke((Controlled Q)(arr(Cs), qb(N))) K)) R}
-                  => {(qstate: applyU(QS, idxs(Cs), N, U)) (k: (val(unit) K)) R}
+  rl [T] : {(qstate: QS) (code: (invoke('T(qb(N))) S)) R}
+        => {(qstate: applyU(QS, nil, N, gT)) (code: (val(unit) S)) R} .
+  rl [Sdg] : {(qstate: QS) (code: (invoke('Sdg(qb(N))) S)) R}
+          => {(qstate: applyU(QS, nil, N, gSdg)) (code: (val(unit) S)) R} .
+  rl [Tdg] : {(qstate: QS) (code: (invoke('Tdg(qb(N))) S)) R}
+          => {(qstate: applyU(QS, nil, N, gTdg)) (code: (val(unit) S)) R} .
+  crl [Controlled] : {(qstate: QS) (code: (invoke((Controlled Q)(arr(Cs), qb(N))) S)) R}
+                  => {(qstate: applyU(QS, idxs(Cs), N, U)) (code: (val(unit) S)) R}
                   if Cs =/= noE /\ U := gateMat(Q) .
 
   *** ---------------- quantum intrinsics: rules ----------------
-  rl [I] : {(k: (invoke('I(qb(N))) K)) R} => {(k: (val(unit) K)) R} .
-  rl [X] : {(qstate: QS) (k: (invoke('X(qb(N))) K)) R}
-        => {(qstate: ((QS).X(N))) (k: (val(unit) K)) R} .
-  rl [Y] : {(qstate: QS) (k: (invoke('Y(qb(N))) K)) R}
-        => {(qstate: ((QS).Y(N))) (k: (val(unit) K)) R} .
-  rl [Z] : {(qstate: QS) (k: (invoke('Z(qb(N))) K)) R}
-        => {(qstate: ((QS).Z(N))) (k: (val(unit) K)) R} .
-  rl [H] : {(qstate: QS) (k: (invoke('H(qb(N))) K)) R}
-        => {(qstate: ((QS).H(N))) (k: (val(unit) K)) R} .
-  rl [S] : {(qstate: QS) (k: (invoke('S(qb(N))) K)) R}
-        => {(qstate: ((QS).S(N))) (k: (val(unit) K)) R} .
-  rl [CNOT] : {(qstate: QS) (k: (invoke('CNOT(qb(N1), qb(N2))) K)) R}
-           => {(qstate: ((QS).CX(N1, N2))) (k: (val(unit) K)) R} .
-  rl [CY] : {(qstate: QS) (k: (invoke('CY(qb(N1), qb(N2))) K)) R}
-         => {(qstate: ((QS).CY(N1, N2))) (k: (val(unit) K)) R} .
-  rl [CZ] : {(qstate: QS) (k: (invoke('CZ(qb(N1), qb(N2))) K)) R}
-         => {(qstate: ((QS).CZ(N1, N2))) (k: (val(unit) K)) R} .
-  rl [SWAP] : {(qstate: QS) (k: (invoke('SWAP(qb(N1), qb(N2))) K)) R}
-           => {(qstate: ((QS).SWAP(N1, N2))) (k: (val(unit) K)) R} .
-  rl [CCNOT] : {(qstate: QS) (k: (invoke('CCNOT(qb(N1), qb(N2), qb(N3))) K)) R}
-            => {(qstate: ((QS).CCX(N1, N2, N3))) (k: (val(unit) K)) R} .
+  rl [I] : {(code: (invoke('I(qb(N))) S)) R} => {(code: (val(unit) S)) R} .
+  rl [X] : {(qstate: QS) (code: (invoke('X(qb(N))) S)) R}
+        => {(qstate: ((QS).X(N))) (code: (val(unit) S)) R} .
+  rl [Y] : {(qstate: QS) (code: (invoke('Y(qb(N))) S)) R}
+        => {(qstate: ((QS).Y(N))) (code: (val(unit) S)) R} .
+  rl [Z] : {(qstate: QS) (code: (invoke('Z(qb(N))) S)) R}
+        => {(qstate: ((QS).Z(N))) (code: (val(unit) S)) R} .
+  rl [H] : {(qstate: QS) (code: (invoke('H(qb(N))) S)) R}
+        => {(qstate: ((QS).H(N))) (code: (val(unit) S)) R} .
+  rl [S] : {(qstate: QS) (code: (invoke('S(qb(N))) S)) R}
+        => {(qstate: ((QS).S(N))) (code: (val(unit) S)) R} .
+  rl [CNOT] : {(qstate: QS) (code: (invoke('CNOT(qb(N1), qb(N2))) S)) R}
+           => {(qstate: ((QS).CX(N1, N2))) (code: (val(unit) S)) R} .
+  rl [CY] : {(qstate: QS) (code: (invoke('CY(qb(N1), qb(N2))) S)) R}
+         => {(qstate: ((QS).CY(N1, N2))) (code: (val(unit) S)) R} .
+  rl [CZ] : {(qstate: QS) (code: (invoke('CZ(qb(N1), qb(N2))) S)) R}
+         => {(qstate: ((QS).CZ(N1, N2))) (code: (val(unit) S)) R} .
+  rl [SWAP] : {(qstate: QS) (code: (invoke('SWAP(qb(N1), qb(N2))) S)) R}
+           => {(qstate: ((QS).SWAP(N1, N2))) (code: (val(unit) S)) R} .
+  rl [CCNOT] : {(qstate: QS) (code: (invoke('CCNOT(qb(N1), qb(N2), qb(N3))) S)) R}
+            => {(qstate: ((QS).CCX(N1, N2, N3))) (code: (val(unit) S)) R} .
 
   *** measurement in the computational basis
-  crl [M-Zero] : {(qstate: QS) (k: (invoke('M(qb(N))) K)) (prob: Pr) R}
-              => {(qstate: QS') (k: (val(Zero) K)) (prob: (Pr .* Pr')) R}
+  crl [M-Zero] : {(qstate: QS) (code: (invoke('M(qb(N))) S)) (prob: Pr) R}
+              => {(qstate: QS') (code: (val(Zero) S)) (prob: (Pr .* Pr')) R}
               if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .
-  crl [M-One] : {(qstate: QS) (k: (invoke('M(qb(N))) K)) (prob: Pr) R}
-             => {(qstate: QS') (k: (val(One) K)) (prob: (Pr .* Pr')) R}
+  crl [M-One] : {(qstate: QS) (code: (invoke('M(qb(N))) S)) (prob: Pr) R}
+             => {(qstate: QS') (code: (val(One) S)) (prob: (Pr .* Pr')) R}
              if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
 
   *** Reset: measure and, if the result is One, apply X
-  crl [Reset-Zero] : {(qstate: QS) (k: (invoke('Reset(qb(N))) K)) (prob: Pr) R}
-                  => {(qstate: QS') (k: (val(unit) K)) (prob: (Pr .* Pr')) R}
+  crl [Reset-Zero] : {(qstate: QS) (code: (invoke('Reset(qb(N))) S)) (prob: Pr) R}
+                  => {(qstate: QS') (code: (val(unit) S)) (prob: (Pr .* Pr')) R}
                   if {qstate: QS', prob: Pr'} := (QS).M(P0, N) /\ Pr' =/= 0 .
-  crl [Reset-One] : {(qstate: QS) (k: (invoke('Reset(qb(N))) K)) (prob: Pr) R}
-                 => {(qstate: ((QS').X(N))) (k: (val(unit) K)) (prob: (Pr .* Pr')) R}
+  crl [Reset-One] : {(qstate: QS) (code: (invoke('Reset(qb(N))) S)) (prob: Pr) R}
+                 => {(qstate: ((QS').X(N))) (code: (val(unit) S)) (prob: (Pr .* Pr')) R}
                  if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
 endm

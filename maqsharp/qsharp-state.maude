@@ -82,6 +82,35 @@ fmod MAQ-PROB is
   *** a real element a + b Sqrt(2) of Z[w], (a, b, 0, -b), as a probability
   op toQ2 : Cpx ~> Prob .
   ceq toQ2((I1,I2,0,I4)) = q2(I1, I2) if I2 == - I4 .
+  op isReal : Cpx -> Bool .
+  eq isReal((I1,I2,0,I4)) = I2 == - I4 .
+  eq isReal(X:Cpx) = false [owise] .
+
+  *** symbolic probabilities: a quotient N / D of real elements of Z[w] that
+  *** contain symbolic constants, e.g. b * b ^* when a qubit a|0> + b|1> is
+  *** measured; it becomes an element of Q(Sqrt(2)) when N and D are concrete
+  op ratio : Cpx Cpx -> Prob [ctor] .
+  vars N D' N' D'' : Cpx .
+  ceq ratio(N, D') = toQ2(N) ./ toQ2(D') if isReal(N) /\ isReal(D') .
+  eq ratio((0,0,0,0), D') = 0 .
+  op isRatio : Prob -> Bool .
+  eq isRatio(ratio(N, D')) = true .
+  eq isRatio(P) = false [owise] .
+  *** numerator and denominator in Z[w] of R + S Sqrt(2), with R = a/b and
+  *** S = c/d: the numerator is ad + cb Sqrt(2) and the denominator bd
+  op num : Rat -> Int .
+  op den : Rat -> NzNat .
+  eq num(I:NzInt / J:NzNat) = I:NzInt .   eq num(K:Int) = K:Int .
+  eq den(I:NzInt / J:NzNat) = J:NzNat .   eq den(K:Int) = 1 .
+  ops nQ dQ : Prob -> Cpx .
+  eq nQ(P) = (num(re(P)) * den(sq(P)), num(sq(P)) * den(re(P)), 0,
+              - (num(sq(P)) * den(re(P)))) .
+  eq dQ(P) = (den(re(P)) * den(sq(P)), 0, 0, 0) .
+  eq ratio(N, D') .* ratio(N', D'') = ratio(N * N', D' * D'') .
+  eq ratio(N, D') .+ ratio(N', D'') = ratio((N * D'') + (N' * D'), D' * D'') .
+  ceq ratio(N, D') .* P = ratio(N * nQ(P), D' * dQ(P)) if not isRatio(P) /\ P =/= untracked .
+  ceq ratio(N, D') .+ P = ratio((N * dQ(P)) + (nQ(P) * D'), D' * dQ(P))
+   if not isRatio(P) /\ P =/= untracked .
 endfm
 
 *** ---------------- states ----------------
@@ -383,7 +412,7 @@ fmod MAQ-STATE is
   op _.M(_,_) : Qubit Proj Nat -> StateProb .
   ceq ((q[NL]: V) QS).M(Pj, N) =
       if W == zeroV then {qstate: (q[NL]: V) QS, prob: 0}
-      else {qstate: canon(NL, W) QS, prob: toQ2(norm2(W)) ./ toQ2(norm2(expl(V)))} fi
+      else {qstate: canon(NL, W) QS, prob: ratio(norm2(W), norm2(expl(V)))} fi
    if occurs(N, NL) /\ W := keep(NL, expl(V), N, bitOf(Pj)) .
 
   *** ---------- observations ----------

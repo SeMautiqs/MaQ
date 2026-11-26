@@ -21,7 +21,7 @@ from qdk import qsharp
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 4000
 
-# (file, namespace prefix for Q#, operations)
+# (file, namespace prefix for Q#, operations, optionally with a depth bound for dist)
 CASES = [
     ("examples/bell.qs", "Demo.", ["Main"]),
     ("examples/ghz.qs", "", ["Main"]),
@@ -38,7 +38,16 @@ CASES = [
       "SuperdenseAll", "EntanglementSwapping"]),
     ("validation/extensions.qs", "Extensions.",
      ["BellTuple", "TuplePatterns", "Arrays", "EachQubit", "OperationArgument",
-      "PauliParities", "ControlledOnInt", "FailNotReached", "Shadowing"]),
+      "PauliParities", "ControlledOnInt", "FailNotReached", "Shadowing",
+      "TupleParameters"]),
+    ("validation/rotations.qs", "Rotations.",
+     ["RzInterference", "RxRyEntangled", "ControlledRz", "ControlledR1",
+      "ControlledRxRy", "AdjointAndR", "AngleLoop", "QFT3", "QFT3Inverse"]),
+    ("validation/specializations.qs", "Specializations.",
+     ["SelfAdjoint", "ExplicitAdjoint", "ExplicitControlled", "InvertControlled",
+      "DistributeAdjoint", "ExplicitControlledAdjoint", "ControlledAdjointSelf",
+      "ControlledAdjointDistribute", "TwoControls", "GenerationDirectives"]),
+    ("examples/shor.qs", "Kata.", ["ShorAllErrors depth 100000"]),
 ]
 
 
@@ -100,7 +109,7 @@ def main():
         for op in ops:
             exact, rest = dists[i]
             i += 1
-            shots = qsharp.run(f"{ns}{op}()", shots=SHOTS)
+            shots = qsharp.run(f"{ns}{op.split()[0]}()", shots=SHOTS)
             counts = {}
             for r in shots:
                 counts[norm(r)] = counts.get(norm(r), 0) + 1
@@ -119,7 +128,7 @@ def main():
                            for v in set(exact) | set(counts))
             show = ", ".join(f"{v}: {exact[v]:.4f}" for v in sorted(exact))
             obs = ", ".join(f"{v}: {counts[v] / SHOTS:.4f}" for v in sorted(counts))
-            rows.append((f"{os.path.basename(f)}:{op}", show, obs, worst, tv, rest, ok))
+            rows.append((f"{os.path.basename(f)}:{op.split()[0]}", show, obs, worst, tv, rest, ok))
     w = max(len(r[0]) for r in rows)
     print(f"{'case':<{w}}  {'max|z|':>6}  {'TV':>6}  ok   Maude (exact)  |  Q# ({SHOTS} shots)")
     for name, show, obs, z, tv, rest, ok in rows:

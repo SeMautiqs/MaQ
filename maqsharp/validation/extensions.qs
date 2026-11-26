@@ -113,4 +113,37 @@ namespace Extensions {
         }
         (x, y, r)
     }
+
+    // tuple patterns in the parameters, also nested: teleportation with the
+    // classical message passed as a pair, and a sum of nested components
+    operation SendBits(a : Qubit, m : Qubit) : (Bool, Bool) {
+        CNOT(m, a);
+        H(m);
+        (M(m) == One, M(a) == One)
+    }
+
+    operation FixBits(q : Qubit, (b1 : Bool, b2 : Bool)) : Unit {
+        if b1 { Z(q); }
+        if b2 { X(q); }
+    }
+
+    function Digits(((x : Int, y : Int), z : Int), w : Int) : Int {
+        x + 10 * y + 100 * z + 1000 * w
+    }
+
+    operation TupleParameters() : (Result, Int) {
+        use (a, b, m) = (Qubit(), Qubit(), Qubit());
+        H(m);
+        S(m);
+        H(m);
+        H(a);
+        CNOT(a, b);
+        FixBits(b, SendBits(a, m));
+        H(b);
+        S(b);
+        H(b);
+        let r = MResetZ(b);
+        ResetAll([a, m]);
+        (r, Digits(((1, 2), 3), 4))
+    }
 }

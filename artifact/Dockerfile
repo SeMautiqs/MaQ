@@ -1,6 +1,6 @@
 # Docker image for the MaQ# artifact.
 #
-# Build from the root of the repository (with the smc4qc submodule checked out):
+# Build from the root of the repository (with the as4qc submodule checked out):
 #   docker build -f artifact/Dockerfile -t maqsharp:spin27 .
 #
 # Everything needed at run time is installed while building, so the container
@@ -10,7 +10,7 @@ FROM ubuntu:25.04
 ARG MAUDE_VERSION=3.5.1
 ARG MAUDE_SHA256=72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c
 ARG QDK_VERSION=1.34.0
-# samples and Quantum Katas of the Q# repository used in RQ2
+# samples and Quantum Katas of the Q# repository, used for the coverage of existing code
 ARG QSHARP_COMMIT=0e58afc2fbb3fb8db806412b045acc0c675f8ce3
 
 RUN apt-get update \
@@ -37,8 +37,8 @@ ENV PATH=/opt/maude:$PATH \
     QSHARP_PYTHON_TELEMETRY=none
 
 COPY . /MaQ
-RUN test -f /MaQ/common/smc4qc/symbolic-reasoning.maude \
- || (echo "smc4qc is missing: run 'git submodule update --init' before building" && false)
+RUN test -f /MaQ/common/as4qc/cpx.maude \
+ || (echo "as4qc is missing: run 'git submodule update --init' before building" && false)
 
 WORKDIR /MaQ/maqsharp
 CMD ["bash"]

@@ -15,7 +15,7 @@ Program loaded. Operations: Teleport
   holds
 Program loaded. Operations: Main
   result: (true ).QBool   prob: 1/2   qubits: emp
-Program loaded. Operations: Count UntilOne
+Program loaded. Operations: Attempts Count UntilOne
   result: 3   prob: 1   qubits: emp
   result: One   qubits: emp
   holds in all final states
@@ -25,6 +25,29 @@ Program loaded. Operations: Count UntilOne
     path:  
     cycle: H M-Zero Reset-Zero
   holds
+  reachable states in at most 30 steps (without probabilities): 51
+  (exploration cut at 30 steps: more states are reachable)
+  holds in all final states reached in at most 30 steps
+  (exploration cut at 30 steps: more states are reachable)
+  holds on all paths of at most 30 steps
+  does NOT hold. Counterexample (applied rules):
+    path:  H M-Zero Reset-Zero H M-Zero Reset-Zero H M-Zero Reset-Zero H M-Zero
+    cycle: cut
+  (the path ends because it was cut at 30 steps)
+  result: 1   prob: 1/2
+  result: 2   prob: 1/4
+  result: 3   prob: 1/8
+  result: 4   prob: 1/16
+  result: 5   prob: 1/32
+  result: 6   prob: 1/64
+  result: 7   prob: 1/128
+  result: 8   prob: 1/256
+  result: 9   prob: 1/512
+  result: 10   prob: 1/1024
+  result: 11   prob: 1/2048
+  result: 12   prob: 1/4096
+  result: 13   prob: 1/8192
+  unexplored (more than 40 steps): 1/8192
 Program loaded. Operations: CountOnes RandomBit
   result: 0   prob: 1/8
   result: 1   prob: 3/8

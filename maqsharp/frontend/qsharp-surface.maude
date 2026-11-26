@@ -1,7 +1,7 @@
 *** Surface syntax of Q#, as written in a .qs file, and syntax of the
 *** tool commands.
 ***
-*** As in MUnit: signatures are plain modules WITHOUT hooks; tokens and
+*** Signatures are plain modules WITHOUT hooks; tokens and
 *** bubbles are added in an FModule built at the metalevel (QSHARP-GRAMMAR,
 *** COMMANDS-GRAMMAR), which is the only one used with metaParse.
 
@@ -33,7 +33,9 @@ fmod QSHARP-SURFACE-SIGN is
   op not_ : @Exp@ -> @Exp@ [prec 53] .
   op _and_ : @Exp@ @Exp@ -> @Exp@ [prec 55 gather (E e)] .
   op _or_ : @Exp@ @Exp@ -> @Exp@ [prec 59 gather (E e)] .
-  op _.._ : @Exp@ @Exp@ -> @Exp@ [prec 65] .
+  op _.._ : @Exp@ @Exp@ -> @Exp@ [prec 65 gather (e e)] .
+  op _.._.._ : @Exp@ @Exp@ @Exp@ -> @Exp@ [prec 65 gather (e e e)] .   *** ranges with a step
+  op `[_`, size = _`] : @Exp@ @Exp@ -> @Exp@ .   *** repeated arrays [v, size = n]
   op _... : @Exp@ -> @Exp@ [prec 65] .   *** open ranges, used in array slices
   op ..._ : @Exp@ -> @Exp@ [prec 65] .
   op _?_|_ : @Exp@ @Exp@ @Exp@ -> @Exp@ [prec 60 gather (e e E)] .
@@ -88,12 +90,30 @@ fmod QSHARP-SURFACE-SIGN is
   op _+_ : @Chars@ @Chars@ -> @Chars@ [prec 0] .
   op _:_ : @Token@ @Type@ -> @Param@ [prec 20] .
   op _`,_ : @Params@ @Params@ -> @Params@ [assoc] .
+  op tuple`(_`) : @Params@ -> @Param@ .   *** tuple pattern in the parameters
+
+  *** explicit specializations
+  sorts @Spec@ @Specs@ @Gen@ @AdjKw@ @Body@ .
+  subsort @Spec@ < @Specs@ .
+  subsort @Block@ < @Body@ .
+  op __ : @Specs@ @Specs@ -> @Specs@ [assoc] .
+  op `{_`} : @Specs@ -> @Body@ .
+  ops self auto invert distribute intrinsic : -> @Gen@ .
+  op adjoint : -> @AdjKw@ .
+  op body`(...`)_ : @Block@ -> @Spec@ [prec 0] .
+  op body_; : @Gen@ -> @Spec@ .
+  op adjoint`(...`)_ : @Block@ -> @Spec@ [prec 0] .
+  op adjoint_; : @Gen@ -> @Spec@ .
+  op controlled`(_`,...`)_ : @Token@ @Block@ -> @Spec@ [prec 0] .
+  op controlled_; : @Gen@ -> @Spec@ .
+  op controlled_`(_`,...`)_ : @AdjKw@ @Token@ @Block@ -> @Spec@ [prec 0] .
+  op controlled__; : @AdjKw@ @Gen@ -> @Spec@ .
 
   *** declarations
-  op operation_`(_`):__ : @Token@ @Params@ @Type@ @Block@ -> @Decl@ [prec 0] .
-  op operation_`(`):__ : @Token@ @Type@ @Block@ -> @Decl@ [prec 0] .
-  op operation_`(_`):_is__ : @Token@ @Params@ @Type@ @Chars@ @Block@ -> @Decl@ [prec 0] .
-  op operation_`(`):_is__ : @Token@ @Type@ @Chars@ @Block@ -> @Decl@ [prec 0] .
+  op operation_`(_`):__ : @Token@ @Params@ @Type@ @Body@ -> @Decl@ [prec 0] .
+  op operation_`(`):__ : @Token@ @Type@ @Body@ -> @Decl@ [prec 0] .
+  op operation_`(_`):_is__ : @Token@ @Params@ @Type@ @Chars@ @Body@ -> @Decl@ [prec 0] .
+  op operation_`(`):_is__ : @Token@ @Type@ @Chars@ @Body@ -> @Decl@ [prec 0] .
   op function_`(_`):__ : @Token@ @Params@ @Type@ @Block@ -> @Decl@ [prec 0] .
   op function_`(`):__ : @Token@ @Type@ @Block@ -> @Decl@ [prec 0] .
   sort @Attr@ .
@@ -116,8 +136,14 @@ fmod QSHARP-COMMANDS-SIGN is
   op dist_ : @Token@ -> @Command@ .
   op dist_depth_ : @Token@ @Token@ -> @Command@ .
   op states_ : @Token@ -> @Command@ .
+  op states_depth_ : @Token@ @Token@ -> @Command@ .
+  op states_`(_`)in_depth_ : @Token@ @Bubble@ @Bubble@ @Token@ -> @Command@ .
+  op check_ensures_depth_ : @Token@ @Bubble@ @Token@ -> @Command@ .
+  op check_`(_`)in_ensures_depth_ : @Token@ @Bubble@ @Bubble@ @Bubble@ @Token@ -> @Command@ .
   op states_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
   op mc_satisfies_ : @Token@ @Bubble@ -> @Command@ .
+  op mc_satisfies_depth_ : @Token@ @Bubble@ @Token@ -> @Command@ .
+  op mc_`(_`)in_satisfies_depth_ : @Token@ @Bubble@ @Bubble@ @Bubble@ @Token@ -> @Command@ .
   op mc_`(_`)in_satisfies_ : @Token@ @Bubble@ @Bubble@ @Bubble@ -> @Command@ .
   op dist_`(_`)in_ : @Token@ @Bubble@ @Bubble@ -> @Command@ .
   op dist_`(_`)in_depth_ : @Token@ @Bubble@ @Bubble@ @Token@ -> @Command@ .
@@ -140,7 +166,7 @@ fmod QSHARP-META-GRAMMARS is
   op keywords : -> QidList .
   eq keywords = 'operation 'function 'let 'mutable 'set 'use 'if 'elif 'else 'for 'in
                 'while 'repeat 'until 'fixup 'return 'namespace 'open 'import 'is
-                'Adj 'Ctl 'Adjoint 'Controlled 'within 'apply 'and 'or 'not 'Qubit 'Unit 'Int 'Bool 'Result 'Double 'Pauli 'String
+                'Adj 'Ctl 'Adjoint 'Controlled 'body 'adjoint 'controlled 'self 'auto 'invert 'distribute 'intrinsic 'within 'apply 'and 'or 'not 'Qubit 'Unit 'Int 'Bool 'Result 'Double 'Pauli 'String
                 '== '!= '< '<= '> '>= '+ '- '* '+= '-= '= '; '`, ': '.. '`( '`)
                 '`[ '`] '`{ '`} '@EntryPoint 'tuple 'fail '... '? '| '/ '% '*= '=> '-> .
 

@@ -26,6 +26,6 @@ mod GHZ is
 endm
 
 *** state right before the first measurement
-search [1] run(prog, 'Main) =>* {(qstate: Q:Qubit) (k: (invoke('M(N:Value)) K:Stmts)) R:Comps} .
+search [1] run(prog, 'Main) =>* {(qstate: Q:Qubit) (code: (invoke('M(N:Value)) S:Stmts)) R:Comps} .
 *** final results
 search run(prog, 'Main) =>! {(result: V:Value) (prob: P:Prob) (qstate: Q:Qubit) R:Comps} .

@@ -4,12 +4,12 @@ Licenses of the components of the MaQ# artifact
 The artifact evaluation committee of SPIN 2027 is granted permission to download,
 run and evaluate this artifact for the purposes of artifact evaluation.
 
-MaQ# (everything under MaQ/ except MaQ/common/smc4qc)
+MaQ# (everything under MaQ/ except MaQ/common/as4qc)
   MIT License, Copyright (c) 2026 Adrián Riesco. See MaQ/LICENSE.
 
-smc4qc (MaQ/common/smc4qc), by Canh Minh Do
-  https://github.com/canhminhdo/smc4qc, commit 56d5bcc.
-  MIT License, Copyright (c) Canh Minh Do. See MaQ/common/smc4qc/LICENSE.
+AS4QC (MaQ/common/as4qc), by Canh Minh Do
+  https://github.com/canhminhdo/as4qc, commit 8a61784.
+  MIT License, Copyright (c) Canh Minh Do. See MaQ/common/as4qc/LICENSE.
 
 Maude 3.5.1 (installed in the Docker image under /opt/maude)
   GNU General Public License, version 2. Source code:

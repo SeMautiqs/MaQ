@@ -7,6 +7,7 @@
 ***
 *** Atomic propositions:
 ***   ended            the program has terminated
+***   failed           the program has terminated with a false assertion (Fact)
 ***   returns(V)       it has terminated returning V
 ***   qubit(N, V)      qubit N is separated and in state V
 ***   qubitPh(N, V)    same, up to global phase (±1, ±i)
@@ -26,7 +27,7 @@ mod QSHARP-MC is
   vars R : Comps . vars V V' : Value . var QS : Qubit . vars N K : Nat .
   var W : Vector . var NL : NatList . var Vc : Vector . var Pp : Prop .
 
-  ops ended : -> Prop [ctor] .
+  ops ended failed : -> Prop [ctor] .
   op returns : Value -> Prop [ctor] .
   ops qubit qubitPh : Nat Vector -> Prop [ctor] .
   op entangled : Nat -> Prop [ctor] .
@@ -41,6 +42,7 @@ mod QSHARP-MC is
   eq inBig(emp, N) = false .
 
   eq {(isEnd: true) R} |= ended = true .
+  eq {(isEnd: true) (result: assertionFailed) R} |= failed = true .
   eq {(isEnd: true) (result: V) R} |= returns(V') = V == V' .
   eq {(qstate: QS) R} |= qubit(N, W) = qubitAt(QS, N) == W .
   eq {(qstate: QS) R} |= qubitPh(N, W) = eqUpToPhase(qubitAt(QS, N), W) .

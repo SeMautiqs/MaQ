@@ -15,7 +15,7 @@ echo "   ok"
 
 echo "== interactive tool session (tests/tool-session.txt)"
 ./tests/run-tool.sh 2>&1 \
-  | grep -E "^ *(result:|holds|does NOT hold|path:|cycle:|reachable|unexplored|in stuck)|^Error|Operations:" \
+  | grep -E "^ *(result:|holds|does NOT hold|path:|cycle:|reachable|unexplored|in stuck|\(exploration|\(the whole|\(the path)|^Error|Operations:" \
   > /tmp/maq-session.txt
 if diff -u "$HERE/smoke-expected.txt" /tmp/maq-session.txt; then
   echo "   ok"

@@ -21,6 +21,11 @@ check UntilOne ensures QS:Qubit == emp
 dist UntilOne
 mc UntilOne satisfies <> ended
 mc UntilOne satisfies [] (ended -> returns(One))
+states Attempts depth 30
+check Attempts ensures RES:Value =/= 0 depth 30
+mc Attempts satisfies [] (ended -> ~ returns(0)) depth 30
+mc Attempts satisfies <> ended depth 30
+dist Attempts depth 40
 open examples/random.qs
 dist CountOnes
 open examples/functors.qs

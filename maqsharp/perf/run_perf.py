@@ -1,4 +1,4 @@
-"""Performance of MaQ# (RQ4): GHZ(n) and Grover(n) for increasing n.
+"""Performance of MaQ#: GHZ(n) and Grover(n) for increasing n.
 
 For each family, size n and analysis (dist, states, mc), a separate Maude
 process is launched with a time limit. A baseline that only loads the tool and
@@ -65,9 +65,16 @@ ANALYSES = {
 
 
 def unlimited_stack():
-    # dist on large programs recurses deeply: raise the stack limit as far as allowed
-    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
-    resource.setrlimit(resource.RLIMIT_STACK, (hard, hard))
+    # raise the stack limit as far as the system allows (on macOS the hard limit
+    # may be reported as unlimited but cannot be used as the soft limit)
+    soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    for lim in (hard, 2**30, 2**28, 64 * 2**20 - 2**12):
+        if lim == resource.RLIM_INFINITY or hard == resource.RLIM_INFINITY or lim <= hard:
+            try:
+                resource.setrlimit(resource.RLIMIT_STACK, (lim, hard))
+                return
+            except (ValueError, OSError):
+                pass
 
 
 def run_maude(qs_file, command):

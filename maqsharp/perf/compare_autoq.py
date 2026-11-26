@@ -64,7 +64,7 @@ def maq(check):
         return "timeout"
     verdict = "holds" if "holds in all" in out else "fails" if "does NOT hold" in out else "?"
     full = " (whole graph)" if "whole state space" in out else \
-           " (cut at 150 steps)" if "exploration cut" in out else ""
+           " (cut at 500 steps)" if "exploration cut" in out else ""
     return f"{t:.2f} s, {verdict}{full}"
 
 

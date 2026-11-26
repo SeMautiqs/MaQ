@@ -14,9 +14,14 @@ with the corrected ones (`post_corrected.hsl`).
 
     maude -allow-files examples/symbolic.maude qsharp-io.maude < validation/autoq/checks.txt
 
-The checks use `depth 150`. For Figure7 and Figure8 the whole state graph is
+The checks use `depth 500`. For Figure7 and Figure8 the whole state graph is
 explored; for the others, each failed iteration multiplies the amplitudes by a
 common factor, such as 1+2i, that the canonical form does not remove, so the
-graph is infinite and only the paths of at most 150 steps are checked.
+graph is infinite and only the paths of at most 500 steps are checked. These
+paths carry all the probability but less than 10^-9, for every input state:
+`dist` with `depth 500` reports the unexplored probability, which does not
+depend on the input (e.g., from `a|0> + b|1>` in `SYMBOLIC`):
+
+    dist Figure10c (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) depth 500
 
 AutoQ is run as `autoq ver pre.hsl circuit.qasm post.hsl` in each directory.

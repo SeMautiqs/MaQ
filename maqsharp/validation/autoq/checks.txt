@@ -1,11 +1,11 @@
 open validation/autoq/rus.qs
 module SYMBOLIC
-check Figure7 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,0,0) + b * (2,-1,0,-1)) . |0> + (a * (2,1,0,1) + b * (-1,0,0,0)) . |1>) depth 150
-check Figure8 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,0,0) + b * (0,1,0,1)) . |0> + (a * (0,1,0,1) + b * (1,0,0,0)) . |1>) depth 150
-check Figure9 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (1,0,-2,0)) . |1>) depth 150
-check Figure10a (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (3,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (3,0,-2,0)) . |1>) depth 150
-check Figure10a (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (3,0,-2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (3,0,2,0)) . |1>) depth 150
-check Figure10b (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (4,0,1,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (4,0,-1,0)) . |1>) depth 150
-check Figure10c (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (5,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (5,0,-2,0)) . |1>) depth 150
-check Figure10c (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (5,0,-2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (5,0,2,0)) . |1>) depth 150
+check Figure7 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,0,0) + b * (2,-1,0,-1)) . |0> + (a * (2,1,0,1) + b * (-1,0,0,0)) . |1>) depth 500
+check Figure8 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,0,0) + b * (0,1,0,1)) . |0> + (a * (0,1,0,1) + b * (1,0,0,0)) . |1>) depth 500
+check Figure9 (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (1,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (1,0,-2,0)) . |1>) depth 500
+check Figure10a (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (3,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (3,0,-2,0)) . |1>) depth 500
+check Figure10a (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (3,0,-2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (3,0,2,0)) . |1>) depth 500
+check Figure10b (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (4,0,1,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (4,0,-1,0)) . |1>) depth 500
+check Figure10c (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (5,0,2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (5,0,-2,0)) . |1>) depth 500
+check Figure10c (qb(0), qb(1)) in (q[0]: |0>) (q[1]: a . |0> + b . |1>) ensures eqUpToPhase(qubitAt(QS:Qubit, 1), (a * (5,0,-2,0) + b * (0,0,0,0)) . |0> + (a * (0,0,0,0) + b * (5,0,2,0)) . |1>) depth 500
 q

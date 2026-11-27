@@ -15,6 +15,9 @@ import warnings
 warnings.filterwarnings("ignore")
 os.environ.setdefault("QSHARP_PYTHON_TELEMETRY", "none")
 from qdk import qsharp
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from validate import seeded_run  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHOTS = 1000
@@ -55,15 +58,15 @@ def main():
         cells = []
         for k, inp in enumerate(INPUTS):
             try:
-                res = qsharp.run(f"Harness.Test({f}, {k})", shots=SHOTS)
+                res = seeded_run(f"Harness.Test({f}, {k})", SHOTS)
                 fails = sum(1 for x in res if x is not True)
                 cells.append(f"{inp}: {100 * fails / SHOTS:.0f}%")
             except Exception as e:  # e.g. a qubit released in a nonzero state
                 cells.append(f"{inp}: error ({str(e).splitlines()[0]})")
         print(f"{name:16} " + "  ".join(cells))
-    res = qsharp.run("Faults.SuperdenseWrongDecoder()", shots=SHOTS)
+    res = seeded_run("Faults.SuperdenseWrongDecoder()", SHOTS)
     print(f"SuperdenseWrongDecoder  false in {100 * sum(1 for x in res if x is False) / SHOTS:.1f}% of the shots")
-    res = qsharp.run("Faults.GroverExtraIteration()", shots=4 * SHOTS)
+    res = seeded_run("Faults.GroverExtraIteration()", 4 * SHOTS)
     freq = collections.Counter(res)
     print("GroverExtraIteration    " + "  ".join(f"{v}: {freq[v] / (4 * SHOTS):.3f}" for v in range(8)))
 

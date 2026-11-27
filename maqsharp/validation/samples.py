@@ -65,7 +65,7 @@ def compare(path, shots):
     """Compares dist Main with the simulator on a sample that runs."""
     from qdk import qsharp
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from validate import norm, num
+    from validate import norm, num, seeded_run
     out = maude(f"open {path}\ndist Main depth 100000\nq\n")
     if out == "TIMEOUT":
         return "not compared: dist timeout"
@@ -82,7 +82,7 @@ def compare(path, shots):
             try:
                 qsharp.init()
                 qsharp.eval(src)
-                res = qsharp.run((ns.group(1) + "." if ns else "") + "Main()", shots=shots)
+                res = seeded_run((ns.group(1) + "." if ns else "") + "Main()", shots)
             finally:
                 os.dup2(old, 1); os.close(old)
     except Exception as e:

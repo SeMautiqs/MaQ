@@ -52,7 +52,7 @@ It runs the object-level tests (`tests/run-all.sh`) and a session of the interac
 SMOKE TEST PASSED
 ```
 
-## Full reproduction (about 1 hour 15 minutes)
+## Full reproduction (about 2 hours)
 
 Inside the container:
 
@@ -64,9 +64,9 @@ or each part separately:
 
 | Claim in the paper | Command | Time |
 |---|---|---|
-| Agreement with the simulator: the exact distributions computed by MaQ# agree with the QDK simulator on all 56 operations (Table 5, App. A) | `python3 validation/validate.py 4000` | ~1.5 min |
+| Agreement with the simulator: the exact distributions computed by MaQ# agree with the QDK simulator on all 56 operations (Table 5, App. A) | `python3 validation/validate.py 4000` | ~15 min |
 | Coverage of existing code: 32 of the 72 official Q# samples run; 28 of them are compared with the simulator and agree | `python3 validation/samples.py /opt/qsharp` | ~5 min |
-| Coverage of existing code: 69 of the 79 testable Quantum Katas exercises agree with the simulator (Table 6, App. B) | `python3 validation/katas.py /opt/qsharp/katas/content 1000` | ~15 min |
+| Coverage of existing code: 69 of the 79 testable Quantum Katas exercises agree with the simulator (Table 6, App. B) | `python3 validation/katas.py /opt/qsharp/katas/content 1000` | ~25 min |
 | Verification: the five seeded faults of Table 3 are detected | `maude -no-banner -allow-files examples/symbolic.maude qsharp-io.maude < validation/faults.txt` | < 1 min |
 | Verification: on the QDK simulator, the seeded faults show only for some inputs | `python3 validation/faults_qdk.py` | < 1 min |
 | Case study: Shor's code corrects every single-qubit error (84 checks) | `maude -no-banner -allow-files examples/symbolic.maude qsharp-io.maude < examples/shor-checks.txt` | < 1 min |
@@ -75,9 +75,28 @@ or each part separately:
 | Examples of the tool (Bell, teleportation with symbolic amplitudes, RUS, functors) | `./tests/run-tool.sh` | < 1 min |
 
 `validate.py` prints, for each operation, the largest |z| statistic, the total variation
-distance, whether the case passes, and the two distributions. Since the simulator is
-sampled, the numbers vary between runs; every case must still pass (|z| ≤ 4), and the
-last line must be `ALL CASES PASS`.
+distance, whether the case passes, and the two distributions. The simulator runs with
+fixed seeds (shot i of every operation uses the seed 2027·10^6 + i), so the numbers are
+the same in every run and coincide with Table 5 of the paper; the last line must be
+`ALL CASES PASS`. `samples.py`, `katas.py`, and `faults_qdk.py` use the same seeds. Set
+the environment variable `MAQ_SEED` to sample with other seeds: the numbers then change,
+but every case must still pass (|z| ≤ 4).
+
+### Claims not reproduced inside the container
+
+The comparisons with QRAT and AutoQ 2.0 in Sect. 7 (the running times of both tools on
+their examples) need those tools, which are not in the image: they must be downloaded
+and built, and the container has no network access. AutoQ, moreover, could not be built
+on macOS (Homebrew under Rosetta). The script `MaQ/artifact/evaluate-native.sh`, which
+produced the numbers of the paper, runs the whole evaluation natively, including these
+comparisons, on a machine with network access, Maude 3.5.1, Python 3 with `qdk` 1.34.0,
+and the QRAT binary; it downloads and builds AutoQ (commit `7eed39a`). The MaQ# side of
+the AutoQ comparison (the checks from a symbolic input up to 500 steps) is reproduced
+inside the container with `validation/autoq/checks.txt` (see the table above). The
+running times in the paper were measured on a MacBook Air (Apple M5, 24 GB, macOS 26.6)
+and, for the comparison with AutoQ, on a Linux server (two cores at 2.3 GHz, 8 GB); times
+inside the container differ, while the numbers of rewrites, states, results, and
+probabilities must coincide.
 
 `run_perf.py` writes `perf/results.csv` and `perf/results.md`. The arguments are the time
 limit per run in seconds and the largest n. Absolute times depend on the machine; the number

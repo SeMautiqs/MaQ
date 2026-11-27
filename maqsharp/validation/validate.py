@@ -6,7 +6,7 @@ For each operation:
   - for each result, the observed frequency k/N is compared with the
     probability p by means of z = (k - N p) / sqrt(N p (1 - p)).
 A case fails if some |z| > 4, if a result with p = 0 shows up, or if one with
-p = 1 is missing.
+p = 1 is missing. The simulator runs with fixed seeds (see seeded_run).
 
 Usage:  python3 validation/validate.py [shots]
 Requires the maude binary in the PATH and MAUDE_LIB pointing to its prelude.
@@ -17,6 +17,22 @@ from fractions import Fraction
 warnings.filterwarnings("ignore")
 os.environ.setdefault("QSHARP_PYTHON_TELEMETRY", "none")
 from qdk import qsharp
+
+# Fixed seed, so that runs are reproducible (MAQ_SEED overrides it). The QDK
+# simulator restarts its generator from the seed in every call, so a seeded
+# run of N shots would repeat one outcome N times: each shot is run on its own,
+# with the seed SEED * 10^6 + i.
+SEED = int(os.environ.get("MAQ_SEED", "2027"))
+
+
+def seeded_run(expr, shots):
+    """Runs expr in the QDK simulator `shots` times with reproducible seeds."""
+    res = []
+    for i in range(shots):
+        qsharp.set_quantum_seed(SEED * 10**6 + i)
+        qsharp.set_classical_seed(SEED * 10**6 + i)
+        res.extend(qsharp.run(expr, shots=1))
+    return res
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 4000
@@ -109,7 +125,7 @@ def main():
         for op in ops:
             exact, rest = dists[i]
             i += 1
-            shots = qsharp.run(f"{ns}{op.split()[0]}()", shots=SHOTS)
+            shots = seeded_run(f"{ns}{op.split()[0]}()", SHOTS)
             counts = {}
             for r in shots:
                 counts[norm(r)] = counts.get(norm(r), 0) + 1

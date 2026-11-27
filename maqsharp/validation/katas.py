@@ -22,7 +22,7 @@ os.environ.setdefault("QSHARP_PYTHON_TELEMETRY", "none")
 from qdk import qsharp
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate import num  # noqa: E402
+from validate import num, seeded_run  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARRAY_LEN = 2      # length of qubit-array parameters
@@ -178,7 +178,7 @@ def check_len(solution, name, ptypes, rtype, alen, shots):
         observed = []
         for op in ops:
             counts = {}
-            for r in qsharp.run(f"{op}()", shots=shots):
+            for r in seeded_run(f"{op}()", shots):
                 counts[str(r)] = counts.get(str(r), 0) + 1
             observed.append(counts)
     except Exception as e:  # noqa: BLE001

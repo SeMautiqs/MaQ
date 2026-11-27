@@ -60,7 +60,7 @@ namespace Extensions {
         (MResetZ(c), MResetZ(a), MResetZ(b))
     }
 
-    // Pauli measurements of the prelude: parities of a Bell pair
+    // Pauli measurements with Measure: parities of a Bell pair
     operation PauliParities() : (Result, Result, Result) {
         use (a, b) = (Qubit(), Qubit());
         H(a);
@@ -72,7 +72,7 @@ namespace Extensions {
         (zz, xx, x)
     }
 
-    // ApplyControlledOnInt and the array functions of the prelude
+    // ApplyControlledOnInt and the array functions of the library
     operation ControlledOnInt() : Result[] {
         use qs = Qubit[3];
         H(Head(qs));

@@ -643,4 +643,65 @@ mod QSHARP-SEMANTICS is
   crl [Reset-One] : {(qstate: QS) (code: (invoke('Reset(qb(N))) S)) (prob: Pr) R}
                  => {(qstate: ((QS').X(N))) (code: (val(unit) S)) (prob: (Pr .* Pr')) R}
                  if {qstate: QS', prob: Pr'} := (QS).M(P1, N) /\ Pr' =/= 0 .
+
+  *** ---------------- library operations ----------------
+  *** Measure(bases, qubits): joint measurement in a product of Pauli bases,
+  *** e.g. Z (x) Z; the qubits with PauliI are not measured, and if all of
+  *** them have PauliI the result is Zero
+  op pauliQs : Qid ExpList ExpList -> NatList .   *** qubits measured in a basis
+  eq pauliQs(Q, noE, noE) = nil .
+  eq pauliQs(Q, (opv(Q') , EL), (qb(N), EL')) =
+     if Q == Q' then __(N, pauliQs(Q, EL, EL')) else pauliQs(Q, EL, EL') fi .
+  ops xsM ysM zsM : ExpList ExpList -> NatList .
+  eq xsM(EL, EL') = pauliQs('PauliX, EL, EL') .
+  eq ysM(EL, EL') = pauliQs('PauliY, EL, EL') .
+  eq zsM(EL, EL') = pauliQs('PauliZ, EL, EL') .
+  ceq invoke('Measure(arr(EL), arr(EL'))) = val(Zero)
+   if __(xsM(EL, EL'), __(ysM(EL, EL'), zsM(EL, EL'))) == nil .
+  crl [Measure-Zero] : {(qstate: QS) (code: (invoke('Measure(arr(EL), arr(EL'))) S)) (prob: Pr) R}
+                    => {(qstate: QS') (code: (val(Zero) S)) (prob: (Pr .* Pr')) R}
+                    if {qstate: QS', prob: Pr'} := (QS).MP(xsM(EL, EL'), ysM(EL, EL'), zsM(EL, EL'), |0>)
+                       /\ Pr' =/= 0 .
+  crl [Measure-One] : {(qstate: QS) (code: (invoke('Measure(arr(EL), arr(EL'))) S)) (prob: Pr) R}
+                   => {(qstate: QS') (code: (val(One) S)) (prob: (Pr .* Pr')) R}
+                   if {qstate: QS', prob: Pr'} := (QS).MP(xsM(EL, EL'), ysM(EL, EL'), zsM(EL, EL'), |1>)
+                      /\ Pr' =/= 0 .
+
+  *** ApplyControlledOnInt(n, op, ctrls, target) and
+  *** ApplyControlledOnBitString(bits, op, ctrls, target): op controlled on the
+  *** basis state given by n (little endian) or by bits: X on the controls that
+  *** must be 0, Controlled op, and X again
+  op flipsInt : Int ExpList -> Stmts .
+  eq flipsInt(I1, noE) = skip .
+  eq flipsInt(I1, (V, EL)) =
+     (if I1 rem 2 == 0 then ('X(V) ;) else skip fi) flipsInt(I1 quo 2, EL) .
+  op flipsBits : ExpList ExpList -> Stmts .
+  eq flipsBits(noE, EL) = skip .
+  eq flipsBits((V, EL), (V', EL')) =
+     (if V == (false).QBool then ('X(V') ;) else skip fi) flipsBits(EL, EL') .
+  eq {(code: (invoke('ApplyControlledOnInt(I1, opv(Cl), arr(Cs), Wa)) S)) R}
+   = {(code: (flipsInt(I1, Cs) ((Controlled Cl)(arr(Cs), Wa) ;) flipsInt(I1, Cs) val(unit) S)) R} .
+  eq {(code: (invoke('ApplyControlledOnBitString(arr(EL), opv(Cl), arr(Cs), Wa)) S)) R}
+   = {(code: (flipsBits(EL, Cs) ((Controlled Cl)(arr(take(Cs, len(EL))), Wa) ;)
+              flipsBits(EL, Cs) val(unit) S)) R} .
+  *** functors: the adjoint inverts op, and the controlled version adds controls to op
+  eq invoke((Adjoint 'ApplyControlledOnInt)(V, opv(Cl), Wa, Wb))
+   = invoke('ApplyControlledOnInt(V, opv(Adjoint Cl), Wa, Wb)) .
+  eq invoke((Adjoint 'ApplyControlledOnBitString)(V, opv(Cl), Wa, Wb))
+   = invoke('ApplyControlledOnBitString(V, opv(Adjoint Cl), Wa, Wb)) .
+  eq invoke((Controlled Adjoint 'ApplyControlledOnInt)(arr(Cs'), V, opv(Cl), Wa, Wb))
+   = invoke((Controlled 'ApplyControlledOnInt)(arr(Cs'), V, opv(Adjoint Cl), Wa, Wb)) .
+  eq invoke((Controlled Adjoint 'ApplyControlledOnBitString)(arr(Cs'), V, opv(Cl), Wa, Wb))
+   = invoke((Controlled 'ApplyControlledOnBitString)(arr(Cs'), V, opv(Adjoint Cl), Wa, Wb)) .
+  eq {(code: (invoke((Controlled 'ApplyControlledOnInt)(arr(Cs'), I1, opv(Cl), arr(Cs), Wa)) S)) R}
+   = {(code: (flipsInt(I1, Cs) ((Controlled Cl)(arr((Cs', Cs)), Wa) ;) flipsInt(I1, Cs) val(unit) S)) R} .
+  eq {(code: (invoke((Controlled 'ApplyControlledOnBitString)(arr(Cs'), arr(EL), opv(Cl), arr(Cs), Wa)) S)) R}
+   = {(code: (flipsBits(EL, Cs) ((Controlled Cl)(arr((Cs', take(Cs, len(EL)))), Wa) ;)
+              flipsBits(EL, Cs) val(unit) S)) R} .
+
+  *** Head, Tail, Rest, Most: parts of an array
+  eq invoke('Head(arr((V, EL)))) = val(V) .
+  eq invoke('Tail(arr((EL, V)))) = val(V) .
+  eq invoke('Rest(arr((V, EL)))) = val(arr(EL)) .
+  eq invoke('Most(arr((EL, V)))) = val(arr(EL)) .
 endm

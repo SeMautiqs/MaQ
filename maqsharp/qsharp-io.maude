@@ -33,7 +33,6 @@ sload qsharp-mc.maude
 load frontend/qsharp-lexer.maude
 load frontend/qsharp-surface.maude
 load frontend/qsharp-translate.maude
-load frontend/qsharp-prelude.maude
 
 fmod MAYBE{X :: TRIV} is
   sort Maybe{X} .
@@ -51,7 +50,6 @@ fmod QSHARP-PROCESSING is
   pr QSHARP-META-GRAMMARS .
   pr QSHARP-LEXER .
   pr LEXICAL .
-  pr QSHARP-PRELUDE .
 
   vars T T' P C St Ar V Pr Qs A1 Q1 C1 : Term .
   var MP : Maybe{Term} . var Ty' : Type . var MC : Module .
@@ -100,17 +98,13 @@ fmod QSHARP-PROCESSING is
   eq opNames(T) = printTokens(opNamesL(T)) .
   op opNamesL : Term -> QidList .
   eq opNamesL('__[T, NeTL]) = opNamesL(T) opNamesL(tail('__, T, NeTL)) .
-  eq opNamesL('operation_`(_`):_`{_`}[T, TL]) =
-     if downTerm(T, 'err) in preludeOps then nil else downTerm(T, 'err) fi .
+  eq opNamesL('operation_`(_`):_`{_`}[T, TL]) = downTerm(T, 'err) .
   eq opNamesL(T) = nil [owise] .
 
-  --- show: user operations only, one per paragraph
+  --- show: the operations of the program, one per paragraph
   op showOps : Module Term -> String .
   eq showOps(M, '__[T, NeTL]) = showOps(M, T) + showOps(M, tail('__, T, NeTL)) .
-  eq showOps(M, T) = if isPrelude(T) then "" else pp(M, T) + "\n" fi [owise] .
-  op isPrelude : Term -> Bool .
-  eq isPrelude('operation_`(_`):_`{_`}[T, TL]) = downTerm(T, 'err) in preludeOps .
-  eq isPrelude(T) = false [owise] .
+  eq showOps(M, T) = pp(M, T) + "\n" [owise] .
 
   *** command bubbles: list of qids -> term in module M
   op bubble : Module Term Type ~> Term .
@@ -602,13 +596,13 @@ mod QSHARP-IO is
       < qsharp : QSharp | state: processing, data: D, prog: MP, mod: MOD, AtS >
    => < qsharp : QSharp | state: write&wait, data: "", prog: P, mod: MOD, AtS >
       write(stdout, qsharp, ok("Program loaded. Operations: " + opNames(P) + "\n"))
-   if loaded(P) := load(upModule(MOD, false), D + "\n" + prelude) .
+   if loaded(P) := load(upModule(MOD, false), D) .
 
   crl [loaded-error] :
       < qsharp : QSharp | state: processing, data: D, mod: MOD, AtS >
    => < qsharp : QSharp | state: write&wait, data: "", mod: MOD, AtS >
       write(stdout, qsharp, err(S))
-   if loadError(S) := load(upModule(MOD, false), D + "\n" + prelude) .
+   if loadError(S) := load(upModule(MOD, false), D) .
 
   *** ---------- commands on the loaded program ----------
   crl [exec] :

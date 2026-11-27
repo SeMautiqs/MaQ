@@ -168,4 +168,9 @@ fmod QSHARP-SYNTAX is
   eq set Q = 'MResetZ(E) ; = (set Q = 'M(E) ;) ('Reset(E) ;) .
   eq return 'MResetZ(E) ; = (let '$mrz = 'M(E) ;) ('Reset(E) ;) (return '$mrz ;) .
   eq 'MResetZ(E) ; = 'Reset(E) ; .
+  ***   MResetX(q): measure in the X basis and reset
+  eq let Q = 'MResetX(E) ; = ('H(E) ;) (let Q = 'M(E) ;) ('Reset(E) ;) .
+  eq set Q = 'MResetX(E) ; = ('H(E) ;) (set Q = 'M(E) ;) ('Reset(E) ;) .
+  eq return 'MResetX(E) ; = ('H(E) ;) (let '$mrx = 'M(E) ;) ('Reset(E) ;) (return '$mrx ;) .
+  eq 'MResetX(E) ; = ('H(E) ;) ('Reset(E) ;) .
 endfm

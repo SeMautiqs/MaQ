@@ -47,7 +47,7 @@ Q#> check Teleport (qb(0), qb(1)) in (q[0]: a . |0> + b . |1>) (q[1]: |0>) ensur
 
 | Command | Effect |
 |---|---|
-| `open f.qs` / `show` | load a Q# file / show the translation of its operations (without the prelude) |
+| `open f.qs` / `show` | load a Q# file / show the translation of its operations |
 | `run Op` / `runnp Op` | final states, with or without path probabilities; if there are none, the statement where execution gets stuck |
 | `dist Op` / `dist Op depth N` | exact distribution of the result, summing over all execution paths (up to 200 or N steps) |
 | `check Op ensures cond` / `... depth N` | check `cond` on every final state (`QS:Qubit` = state, `RES:Value` = result); with `depth N`, on those reached in at most N steps |
@@ -82,8 +82,8 @@ holds in such a state unless it is final.
   block or as `self`, `auto`, `invert` or `distribute`).
 - Intrinsics `I X Y Z H S T CNOT CY CZ SWAP CCNOT M Reset ResetAll MResetZ MResetEachZ MeasureEachZ
   ApplyToEach`; rotations `Rx Ry Rz R1 R` by multiples of pi/4 (pi/2 for `Rx` and `Ry`, and
-  for `Rz` under `Controlled`), which are exact in the ring of AS4QC; and a prelude written in Q# with `Measure` (Pauli measurements, also joint),
-  `ApplyControlledOnInt`, `ApplyControlledOnBitString`, `MResetX`, `Head`, `Tail`, `Rest` and `Most`.
+  for `Rz` under `Controlled`), which are exact in the ring of AS4QC; and the library operations `Measure` (Pauli measurements, also joint),
+  `ApplyControlledOnInt`, `ApplyControlledOnBitString`, `MResetX`, `Head`, `Tail`, `Rest` and `Most`, defined in Maude.
 - Assertions with `Fact(c, msg)`: a false one ends the execution with the result `assertionFailed`,
   which `run`, `dist` and `check` report (any `check` fails on it) and which the LTL proposition
   `failed` observes (`examples/assertions.qs`).

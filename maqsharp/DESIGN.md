@@ -25,7 +25,7 @@ Commands (in all of them, `Op` also admits the form `Op (args) in state`):
 
 | Command | Effect |
 |---|---|
-| `open f.qs` / `show` | load a program / show the translation of its operations (without the prelude) |
+| `open f.qs` / `show` | load a program / show the translation of its operations |
 | `run Op` | distinct final states, with the probability of **one** path; if there are none, the statement where execution gets stuck |
 | `runnp Op` | the same without probabilities: finite graph even with RUS loops |
 | `dist Op` | **exact distribution** of the result: adds up all paths, up to 200 steps, and reports the unexplored and the stuck mass |
@@ -57,7 +57,6 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
 | `frontend/qsharp-translate.maude` | metalevel translation from the surface syntax into `QSHARP-SYNTAX` |
 | `examples/` | `bell.qs`, `teleport.qs`, `ghz.qs`, `rus.qs`, `functors.qs`, `random.qs`, `errors.qs` and `symbolic.maude` |
 | `tests/` | object-level tests (`run-all.sh`) and a session of the tool (`run-tool.sh`) |
-| `frontend/qsharp-prelude.maude` | part of the Q# standard library, written in Q# |
 | `validation/` | `validate.py` with `validation.qs`, `algorithms.qs` and `extensions.qs`: comparison with the official Q# simulator; `samples.py` and `katas.py`: coverage on the official samples and Quantum Katas |
 | `perf/` | `run_perf.py`: scalability on GHZ(n) and Grover(n) |
 
@@ -76,8 +75,8 @@ LTL propositions: `ended`, `returns(V)`, `qubit(N, V)`, `qubitPh(N, V)` (up to p
   nested and combined (`Controlled Adjoint S`), and `within { } apply { }`.
 
 The front end accepts a larger surface syntax and reduces it to this core (see below): tuples,
-slices, assignments without `set`, implicit returns, operations as arguments and a prelude of
-library operations written in Q#.
+slices, assignments without `set`, implicit returns, and operations as arguments; library operations such as
+`Measure` are defined in the semantics.
 
 **Key restriction:** a call (`Call`) is not an expression. It can only appear at the
 root of a statement: `'H('q) ;`, `let 'r = 'M('q) ;`, `set 'x = 'F(...) ;`
@@ -110,11 +109,14 @@ or `return 'F(...) ;`. Hence conditions are pure, and the grammar guarantees it.
 6. **Lexer details.** Grouping parentheses with a comma at the top level are tuples: the lexer
    writes the keyword `tuple` in front of them, which avoids ambiguities with Maude's own
    parentheses. It also removes attributes (`@Test()`) and the `$` of interpolated strings.
-7. **Prelude.** `frontend/qsharp-prelude.maude` contains part of the standard library written in
-   Q# (`Measure`, `ApplyControlledOnInt`, `ApplyControlledOnBitString`, `MResetX`, `Head`, `Tail`,
-   `Rest`, `Most`); it is appended to every program and executed by the same semantics. `Measure`
-   uses an auxiliary qubit that collects the parity of the measured qubits after the basis changes.
-   `MResetZ`, `MResetEachZ` and `MeasureEachZ` are defined by equations in `QSHARP-SYNTAX`.
+7. **Library operations.** `Measure` (joint measurement in a product of Pauli bases) is given by
+   two rules, `Measure-Zero` and `Measure-One`, in `QSHARP-SEMANTICS`: `_.MP` in `MAQ-STATE`
+   rotates the measured qubits to the Z basis (H for X; Sdg and H for Y), joins their blocks,
+   keeps the terms whose parity is the result, and rotates back; the rotated state is memoized,
+   so the two rules compute it once. `ApplyControlledOnInt` and `ApplyControlledOnBitString`
+   (with their adjoint and controlled versions) and `Head`, `Tail`, `Rest`, `Most` are equations
+   of `QSHARP-SEMANTICS`; `MResetX`, `MResetZ`, `MResetEachZ` and `MeasureEachZ` are equations
+   in `QSHARP-SYNTAX`.
 5. **Execution**: `metaSearch` on `upModule(M)`, with `M = QSHARP-PROPS` or the module chosen with `module`.
    The arguments, the state and the condition of a command are bubbles parsed in `M`.
 

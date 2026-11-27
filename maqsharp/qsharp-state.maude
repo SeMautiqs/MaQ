@@ -415,6 +415,43 @@ fmod MAQ-STATE is
       else {qstate: canon(NL, W) QS, prob: ratio(norm2(W), norm2(expl(V)))} fi
    if occurs(N, NL) /\ W := keep(NL, expl(V), N, bitOf(Pj)) .
 
+  *** ---------- joint measurement in a product of Pauli bases ----------
+  *** The qubits Xs, Ys and Zs are measured in the X, Y and Z bases: they are
+  *** rotated to the Z basis (H for X; Sdg and then H for Y), the blocks that
+  *** contain them are joined, the terms whose parity on those qubits is the
+  *** result are kept, and the rotations are undone. The probability is
+  *** computed, as for M, on the rotated vector.
+  op parity : NatList Ket NatList -> Bit .
+  eq parity(NL, K, nil) = |0> .
+  eq parity(NL, K, N CsN) =
+     if bitAt(NL, K, N) == parity(NL, K, CsN) then |0> else |1> fi .
+  op keepPar : NatList Vector NatList Bit -> Vector .
+  eq keepPar(NL, zeroV, CsN, B) = zeroV .
+  eq keepPar(NL, K, CsN, B) = if parity(NL, K, CsN) == B then K else zeroV fi .
+  eq keepPar(NL, X . K, CsN, B) = if parity(NL, K, CsN) == B then X . K else zeroV fi .
+  eq keepPar(NL, V + W, CsN, B) = keepPar(NL, V, CsN, B) + keepPar(NL, W, CsN, B) .
+
+  op gates : Qubit NatList Gate -> Qubit .    *** the gate on each qubit of the list
+  eq gates(QS, nil, G:Gate) = QS .
+  eq gates(QS, N NL, G:Gate) = gates(applyU(QS, nil, N, G:Gate), NL, G:Gate) .
+  op toZ : Qubit NatList NatList -> Qubit .
+  eq toZ(QS, NL1, NL2) = gates(gates(gates(QS, NL1, gH), NL2, gSdg), NL2, gH) .
+  op fromZ : Qubit NatList NatList -> Qubit .
+  eq fromZ(QS, NL1, NL2) = gates(gates(gates(QS, NL2, gH), NL2, gS), NL1, gH) .
+
+  *** the rotated and joined state is memoized, since the rules of the two
+  *** results compute it from the same arguments
+  op rotJoin : Qubit NatList NatList NatList -> Qubit [memo] .
+  eq rotJoin(QS, NL1, NL2, CsN) = mergeQ(toZ(QS, NL1, NL2), NL1 NL2 CsN) .
+  op _.MP(_,_,_,_) : Qubit NatList NatList NatList Bit -> StateProb .
+  ceq (QS).MP(NL1, NL2, CsN, B) = $mp(rotJoin(QS, NL1, NL2, CsN), NL1, NL2, NL1 NL2 CsN, B)
+   if NL1 NL2 CsN =/= nil .
+  op $mp : Qubit NatList NatList NatList Bit -> StateProb .
+  ceq $mp((q[NL]: V) QS, NL1, NL2, N CsN, B) =
+      if W == zeroV then {qstate: (q[NL]: V) QS, prob: 0}
+      else {qstate: fromZ(canon(NL, W) QS, NL1, NL2), prob: ratio(norm2(W), norm2(expl(V)))} fi
+   if occurs(N, NL) /\ W := keepPar(NL, expl(V), N CsN, B) .
+
   *** ---------- observations ----------
   op qubitAt : Qubit Nat -> Vector .
   eq qubitAt((q[N]: V) QS, N) = V .
